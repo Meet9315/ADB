@@ -1,0 +1,27 @@
+name: Validate Skills
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  validate:
+    name: agentskills.io SKILL.md compliance
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run skill validator
+        run: |
+          python scripts/validate_skills.py \
+            --skills-dir skills \
+            --marketplace marketplace.json

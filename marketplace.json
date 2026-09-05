@@ -1,0 +1,25 @@
+{
+  "$schema": "https://agentskills.io/marketplace.schema.json",
+  "name": "ai-discoverability-audit",
+  "description": "Audits any website for AI-discoverability and on-site-engagement problems, producing structured findings in the hardened finding contract format.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "skills": [
+    {
+      "name": "audit-orchestrator",
+      "path": "skills/audit-orchestrator",
+      "entrypoint": true,
+      "description": "Top-level orchestrator: accepts a domain, runs site-acquisition and analysis skills in sequence, deduplicates and scores findings, and emits the final audit report."
+    },
+    {
+      "name": "site-acquisition",
+      "path": "skills/site-acquisition",
+      "description": "Crawls and renders the target website within budget constraints, producing a normalized page corpus and crawl manifest for downstream analysis skills."
+    },
+    {
+      "name": "machine-readability-audit",
+      "path": "skills/machine-readability-audit",
+      "description": "Audits the corpus for structured-data, robots-directive, and metadata gaps that degrade AI agent discoverability."
+    }
+  ]
+}
