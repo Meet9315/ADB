@@ -5,6 +5,8 @@ render.py — Headless-browser renderer for site-acquisition.
 Renders 3–5 sampled pages (homepage + one exemplar per major URL template)
 with Playwright, saving the post-JS HTML alongside raw.html in the corpus.
 
+Shares a single wall-clock budget with crawl.py via BudgetTracker.from_manifest().
+
 On startup, detects whether Playwright and a browser binary are available.
 If not, sets `playwright_available: false` in the manifest and exits
 cleanly — downstream checks use a lower-confidence heuristic fallback.
@@ -117,12 +119,18 @@ def render_pages(
     browser = pw.chromium.launch(headless=True)
 
     try:
-        for sample in samples:
-            # Budget check: reduce sample rather than exceed
-            if budget.remaining_soft() < 20:
+        for idx, sample in enumerate(samples):
+            # Budget check: halt if approaching hard ceiling
+            if budget.remaining_hard() < 15.0:
+                budget.record_skip(sample["url"],
+                                   "render_hard_deadline_approaching", "render")
+                break
+
+            # Budget check: stop adding samples if remaining soft budget is tight
+            if budget.remaining_soft() < 20.0 and len(results) >= MIN_RENDER_PAGES:
                 budget.record_skip(sample["url"],
                                    "render_budget_reduced", "render")
-                continue
+                break
 
             slug = sample["slug"]
             url = sample["url"]
@@ -164,8 +172,10 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Site-acquisition renderer")
     ap.add_argument("corpus_dir", help="Path to corpus/pages directory")
     ap.add_argument("crawl_manifest", help="Path to crawl_manifest.json")
-    ap.add_argument("--budget-soft", type=float, default=240.0)
-    ap.add_argument("--budget-hard", type=float, default=300.0)
+    ap.add_argument("--budget-soft", type=float, default=None,
+                    help="Soft budget in seconds (default: inherit from manifest)")
+    ap.add_argument("--budget-hard", type=float, default=None,
+                    help="Hard budget in seconds (default: inherit from manifest)")
     args = ap.parse_args()
 
     corpus_dir = Path(args.corpus_dir)
@@ -178,8 +188,28 @@ def main() -> None:
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
-    # Budget tracker — start from the time already consumed by crawl
-    budget = BudgetTracker(soft_s=args.budget_soft, hard_s=args.budget_hard)
+    # Shared budget tracker — continuous wall-clock time from crawl start
+    budget = BudgetTracker.from_manifest(
+        manifest, soft_s=args.budget_soft, hard_s=args.budget_hard
+    )
+    print(f"[render] Starting render phase. Acquisition elapsed so far: {budget.elapsed():.1f}s "
+          f"(soft remaining: {budget.remaining_soft():.1f}s, hard remaining: {budget.remaining_hard():.1f}s)")
+
+    # Hard ceiling safety check before doing any work
+    if budget.remaining_hard() < 15.0:
+        print("[render] Hard budget nearly exhausted before render phase — skipping rendering.")
+        budget.record_skip("all", "acquisition_hard_budget_exhausted", "render")
+        manifest["renderer"] = {
+            "playwright_available": False,
+            "note": "Skipped because acquisition hard budget was nearly exhausted.",
+            "pages_rendered": 0,
+            "render_results": [],
+        }
+        manifest["budget"] = budget.snapshot()
+        manifest["skips"] = budget.skips()
+        manifest_path.write_text(json.dumps(manifest, indent=2, default=str),
+                                 encoding="utf-8")
+        return
 
     # Probe Playwright availability
     pw_available = _probe_playwright()
@@ -194,17 +224,20 @@ def main() -> None:
             "pages_rendered": 0,
             "render_results": [],
         }
+        manifest["budget"] = budget.snapshot()
+        manifest["skips"] = budget.skips()
         manifest_path.write_text(json.dumps(manifest, indent=2, default=str),
                                  encoding="utf-8")
         print("[render] Skipped — Playwright unavailable.  "
               "Pipeline continues with heuristic fallback.")
         return
 
-    # Select pages to render
+    # Select pages to render based on remaining budget
     max_pages = MAX_RENDER_PAGES
-    if budget.remaining_soft() < 60:
+    if budget.over_soft() or budget.remaining_soft() < 60:
         max_pages = MIN_RENDER_PAGES
-        print("[render] Budget tight — reducing to 1 sample page")
+        print(f"[render] Budget tight ({budget.remaining_soft():.1f}s soft remaining) — "
+              f"reducing to {MIN_RENDER_PAGES} sample page")
 
     samples = _select_samples(manifest, max_pages)
     if not samples:
@@ -214,6 +247,8 @@ def main() -> None:
             "pages_rendered": 0,
             "render_results": [],
         }
+        manifest["budget"] = budget.snapshot()
+        manifest["skips"] = budget.skips()
         manifest_path.write_text(json.dumps(manifest, indent=2, default=str),
                                  encoding="utf-8")
         return
@@ -221,20 +256,20 @@ def main() -> None:
     print(f"[render] Rendering {len(samples)} page(s)")
     render_results = render_pages(corpus_dir, samples, budget)
 
-    # Update manifest
+    # Update manifest with render results, final shared budget snapshot, and consolidated skips
     manifest["renderer"] = {
         "playwright_available": True,
         "pages_rendered": sum(1 for r in render_results if r["rendered"]),
         "render_results": render_results,
     }
-    # Append any render-stage skips
-    manifest.setdefault("skips", []).extend(budget.skips())
+    manifest["budget"] = budget.snapshot()
+    manifest["skips"] = budget.skips()
     manifest_path.write_text(json.dumps(manifest, indent=2, default=str),
                              encoding="utf-8")
 
     ok = sum(1 for r in render_results if r["rendered"])
-    print(f"[render] Done — {ok}/{len(render_results)} pages rendered, "
-          f"{len(budget.skips())} skipped")
+    print(f"[render] Done in {budget.elapsed():.1f}s total acquisition time — "
+          f"{ok}/{len(render_results)} pages rendered, {len(budget.skips())} total skips")
 
 
 if __name__ == "__main__":
