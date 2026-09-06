@@ -1,0 +1,4 @@
+# site-acquisition dependencies — pinned to tested versions
+httpx[http2]==0.28.1
+selectolax==0.4.11
+playwright==1.62.0
