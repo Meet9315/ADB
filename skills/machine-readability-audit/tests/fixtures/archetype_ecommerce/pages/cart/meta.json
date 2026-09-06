@@ -1,0 +1,6 @@
+{
+  "url": "https://shop.example.com/cart",
+  "final_url": "https://shop.example.com/cart",
+  "status_code": 200,
+  "response_headers": {}
+}

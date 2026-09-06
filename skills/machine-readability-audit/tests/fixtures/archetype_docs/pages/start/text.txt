@@ -1,0 +1,1 @@
+Getting Started - LibDoc Documentation Installation and Quickstart npm install @libdoc/core Initialize the client as shown below: const client = new LibDoc({ apiKey: "..." });

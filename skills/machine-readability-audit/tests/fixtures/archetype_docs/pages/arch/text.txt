@@ -1,0 +1,1 @@
+Architecture Guide - LibDoc Core Architecture & Runtime Model class WorkerPool { constructor(size) { ... } }

@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "tool": "site-acquisition/crawl.py",
+  "domain": "mystery-project.org",
+  "base_url": "https://mystery-project.org",
+  "origin_host": "mystery-project.org",
+  "pages_crawled": 1,
+  "pages_attempted": 1,
+  "budget": {
+    "started_at": 1788714101.8568454,
+    "elapsed_s": 5.0,
+    "soft_deadline_s": 240.0,
+    "hard_deadline_s": 300.0,
+    "over_soft": false,
+    "over_hard": false
+  },
+  "crawled_pages": [
+    {
+      "url": "https://mystery-project.org/",
+      "final_url": "https://mystery-project.org/",
+      "status_code": 200,
+      "slug": "home",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    }
+  ],
+  "skips": []
+}

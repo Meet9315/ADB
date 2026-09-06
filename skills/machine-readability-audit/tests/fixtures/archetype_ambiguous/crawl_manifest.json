@@ -1,0 +1,65 @@
+{
+  "schema_version": "1.0",
+  "tool": "site-acquisition/crawl.py",
+  "domain": "devcloud.io",
+  "base_url": "https://devcloud.io",
+  "origin_host": "devcloud.io",
+  "pages_crawled": 5,
+  "pages_attempted": 5,
+  "budget": {
+    "started_at": 1788714101.8383381,
+    "elapsed_s": 5.0,
+    "soft_deadline_s": 240.0,
+    "hard_deadline_s": 300.0,
+    "over_soft": false,
+    "over_hard": false
+  },
+  "crawled_pages": [
+    {
+      "url": "https://devcloud.io/",
+      "final_url": "https://devcloud.io/",
+      "status_code": 200,
+      "slug": "home",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    },
+    {
+      "url": "https://devcloud.io/pricing",
+      "final_url": "https://devcloud.io/pricing",
+      "status_code": 200,
+      "slug": "pricing",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    },
+    {
+      "url": "https://devcloud.io/docs/quickstart",
+      "final_url": "https://devcloud.io/docs/quickstart",
+      "status_code": 200,
+      "slug": "docs_quickstart",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    },
+    {
+      "url": "https://devcloud.io/docs/v2.1/api-reference",
+      "final_url": "https://devcloud.io/docs/v2.1/api-reference",
+      "status_code": 200,
+      "slug": "docs_api",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    },
+    {
+      "url": "https://devcloud.io/docs/v2.1/cli-guide",
+      "final_url": "https://devcloud.io/docs/v2.1/cli-guide",
+      "status_code": 200,
+      "slug": "docs_cli",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    }
+  ],
+  "skips": []
+}

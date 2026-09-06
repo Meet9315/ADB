@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "tool": "site-acquisition/crawl.py",
+  "domain": "sam-writes-code.com",
+  "base_url": "https://sam-writes-code.com",
+  "origin_host": "sam-writes-code.com",
+  "pages_crawled": 2,
+  "pages_attempted": 2,
+  "budget": {
+    "started_at": 1788714101.8751101,
+    "elapsed_s": 5.0,
+    "soft_deadline_s": 240.0,
+    "hard_deadline_s": 300.0,
+    "over_soft": false,
+    "over_hard": false
+  },
+  "crawled_pages": [
+    {
+      "url": "https://sam-writes-code.com/",
+      "final_url": "https://sam-writes-code.com/",
+      "status_code": 200,
+      "slug": "home",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    },
+    {
+      "url": "https://sam-writes-code.com/blog/my-favorite-python-features",
+      "final_url": "https://sam-writes-code.com/blog/my-favorite-python-features",
+      "status_code": 200,
+      "slug": "post1",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    }
+  ],
+  "skips": []
+}

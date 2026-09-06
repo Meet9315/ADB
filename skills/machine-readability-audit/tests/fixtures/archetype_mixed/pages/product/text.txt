@@ -1,0 +1,1 @@
+POS Terminal Pro - Hardware {"@context": "https://schema.org", "@type": "Product", "name": "POS Terminal Pro", "offers": {"@type": "Offer", "price": "299.00", "priceCurrency": "USD"}} POS Terminal Pro Price: $299.00 USD Add to Cart

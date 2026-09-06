@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "tool": "site-acquisition/crawl.py",
+  "domain": "globalscale-ai.com",
+  "base_url": "https://globalscale-ai.com",
+  "origin_host": "globalscale-ai.com",
+  "pages_crawled": 3,
+  "pages_attempted": 3,
+  "budget": {
+    "started_at": 1788714101.8701108,
+    "elapsed_s": 5.0,
+    "soft_deadline_s": 240.0,
+    "hard_deadline_s": 300.0,
+    "over_soft": false,
+    "over_hard": false
+  },
+  "crawled_pages": [
+    {
+      "url": "https://globalscale-ai.com/",
+      "final_url": "https://globalscale-ai.com/",
+      "status_code": 200,
+      "slug": "home",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    },
+    {
+      "url": "https://globalscale-ai.com/contact",
+      "final_url": "https://globalscale-ai.com/contact",
+      "status_code": 200,
+      "slug": "contact",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    },
+    {
+      "url": "https://globalscale-ai.com/pricing",
+      "final_url": "https://globalscale-ai.com/pricing",
+      "status_code": 200,
+      "slug": "pricing",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    }
+  ],
+  "skips": []
+}

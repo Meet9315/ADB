@@ -449,7 +449,7 @@ def select_archetypes(scores: Dict[str, float], sig: Dict) -> Tuple[List[str], L
     if not scores:
         return ["unknown"], ["No signals found"]
 
-    ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    ranked = sorted(scores.items(), key=lambda x: (-x[1], x[0]))
     best_name, best_score = ranked[0]
     notes: List[str] = []
 

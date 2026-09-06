@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "tool": "site-acquisition/crawl.py",
+  "domain": "chronicle-times.com",
+  "base_url": "https://chronicle-times.com",
+  "origin_host": "chronicle-times.com",
+  "pages_crawled": 3,
+  "pages_attempted": 3,
+  "budget": {
+    "started_at": 1788714101.7893126,
+    "elapsed_s": 5.0,
+    "soft_deadline_s": 240.0,
+    "hard_deadline_s": 300.0,
+    "over_soft": false,
+    "over_hard": false
+  },
+  "crawled_pages": [
+    {
+      "url": "https://chronicle-times.com/",
+      "final_url": "https://chronicle-times.com/",
+      "status_code": 200,
+      "slug": "home",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    },
+    {
+      "url": "https://chronicle-times.com/news/climate-accord-signed",
+      "final_url": "https://chronicle-times.com/news/climate-accord-signed",
+      "status_code": 200,
+      "slug": "news1",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    },
+    {
+      "url": "https://chronicle-times.com/news/tech-antitrust-ruling",
+      "final_url": "https://chronicle-times.com/news/tech-antitrust-ruling",
+      "status_code": 200,
+      "slug": "news2",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    }
+  ],
+  "skips": []
+}

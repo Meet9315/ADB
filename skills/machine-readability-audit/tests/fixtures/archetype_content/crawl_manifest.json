@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "tool": "site-acquisition/crawl.py",
+  "domain": "deeptechblog.org",
+  "base_url": "https://deeptechblog.org",
+  "origin_host": "deeptechblog.org",
+  "pages_crawled": 3,
+  "pages_attempted": 3,
+  "budget": {
+    "started_at": 1788714101.7853193,
+    "elapsed_s": 5.0,
+    "soft_deadline_s": 240.0,
+    "hard_deadline_s": 300.0,
+    "over_soft": false,
+    "over_hard": false
+  },
+  "crawled_pages": [
+    {
+      "url": "https://deeptechblog.org/",
+      "final_url": "https://deeptechblog.org/",
+      "status_code": 200,
+      "slug": "home",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    },
+    {
+      "url": "https://deeptechblog.org/blog/future-of-compilers",
+      "final_url": "https://deeptechblog.org/blog/future-of-compilers",
+      "status_code": 200,
+      "slug": "post1",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    },
+    {
+      "url": "https://deeptechblog.org/blog/garbage-collection-notes",
+      "final_url": "https://deeptechblog.org/blog/garbage-collection-notes",
+      "status_code": 200,
+      "slug": "post2",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    }
+  ],
+  "skips": []
+}

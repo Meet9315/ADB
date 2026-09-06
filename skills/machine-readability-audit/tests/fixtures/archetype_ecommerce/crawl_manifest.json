@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "tool": "site-acquisition/crawl.py",
+  "domain": "shop.example.com",
+  "base_url": "https://shop.example.com",
+  "origin_host": "shop.example.com",
+  "pages_crawled": 3,
+  "pages_attempted": 3,
+  "budget": {
+    "started_at": 1788714101.7753172,
+    "elapsed_s": 5.0,
+    "soft_deadline_s": 240.0,
+    "hard_deadline_s": 300.0,
+    "over_soft": false,
+    "over_hard": false
+  },
+  "crawled_pages": [
+    {
+      "url": "https://shop.example.com/",
+      "final_url": "https://shop.example.com/",
+      "status_code": 200,
+      "slug": "home",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    },
+    {
+      "url": "https://shop.example.com/products/classic-tee",
+      "final_url": "https://shop.example.com/products/classic-tee",
+      "status_code": 200,
+      "slug": "product_tee",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    },
+    {
+      "url": "https://shop.example.com/cart",
+      "final_url": "https://shop.example.com/cart",
+      "status_code": 200,
+      "slug": "cart",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    }
+  ],
+  "skips": []
+}

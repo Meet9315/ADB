@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.0",
+  "tool": "site-acquisition/crawl.py",
+  "domain": "commercecloud.net",
+  "base_url": "https://commercecloud.net",
+  "origin_host": "commercecloud.net",
+  "pages_crawled": 4,
+  "pages_attempted": 4,
+  "budget": {
+    "started_at": 1788714101.8598566,
+    "elapsed_s": 5.0,
+    "soft_deadline_s": 240.0,
+    "hard_deadline_s": 300.0,
+    "over_soft": false,
+    "over_hard": false
+  },
+  "crawled_pages": [
+    {
+      "url": "https://commercecloud.net/",
+      "final_url": "https://commercecloud.net/",
+      "status_code": 200,
+      "slug": "home",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    },
+    {
+      "url": "https://commercecloud.net/products/pos-terminal-pro",
+      "final_url": "https://commercecloud.net/products/pos-terminal-pro",
+      "status_code": 200,
+      "slug": "product",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    },
+    {
+      "url": "https://commercecloud.net/pricing",
+      "final_url": "https://commercecloud.net/pricing",
+      "status_code": 200,
+      "slug": "pricing",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    },
+    {
+      "url": "https://commercecloud.net/cart",
+      "final_url": "https://commercecloud.net/cart",
+      "status_code": 200,
+      "slug": "cart",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    }
+  ],
+  "skips": []
+}

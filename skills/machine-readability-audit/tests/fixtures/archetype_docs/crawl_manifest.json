@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "tool": "site-acquisition/crawl.py",
+  "domain": "libdoc.dev",
+  "base_url": "https://libdoc.dev",
+  "origin_host": "libdoc.dev",
+  "pages_crawled": 3,
+  "pages_attempted": 3,
+  "budget": {
+    "started_at": 1788714101.7953153,
+    "elapsed_s": 5.0,
+    "soft_deadline_s": 240.0,
+    "hard_deadline_s": 300.0,
+    "over_soft": false,
+    "over_hard": false
+  },
+  "crawled_pages": [
+    {
+      "url": "https://libdoc.dev/docs/getting-started",
+      "final_url": "https://libdoc.dev/docs/getting-started",
+      "status_code": 200,
+      "slug": "start",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    },
+    {
+      "url": "https://libdoc.dev/docs/v2.1/api-reference",
+      "final_url": "https://libdoc.dev/docs/v2.1/api-reference",
+      "status_code": 200,
+      "slug": "api",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    },
+    {
+      "url": "https://libdoc.dev/docs/guide/architecture",
+      "final_url": "https://libdoc.dev/docs/guide/architecture",
+      "status_code": 200,
+      "slug": "arch",
+      "elapsed_s": 0.1,
+      "redirect_count": 0,
+      "error": null
+    }
+  ],
+  "skips": []
+}
