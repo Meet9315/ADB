@@ -154,16 +154,17 @@ def is_url_allowed(url: str, all_rules: Dict) -> bool:
     return True
 
 
-def fetch_robots_txt(base_url: str) -> Tuple[str, Dict]:
-    """Fetch robots.txt synchronously (called once before async loop)."""
+async def fetch_robots_txt(
+    base_url: str, client: httpx.AsyncClient, budget: BudgetTracker,
+) -> Tuple[str, Dict]:
+    """Fetch robots.txt asynchronously, bounded by hard budget remaining."""
     robots_url = base_url.rstrip("/") + "/robots.txt"
     raw = ""
+    timeout = min(PAGE_TIMEOUT_S, max(1.0, budget.remaining_hard()))
     try:
-        with httpx.Client(timeout=10, headers={"User-Agent": USER_AGENT},
-                          follow_redirects=True) as c:
-            r = c.get(robots_url)
-            if r.status_code == 200:
-                raw = r.text
+        r = await client.get(robots_url, timeout=timeout, follow_redirects=True)
+        if r.status_code == 200:
+            raw = r.text
     except Exception:
         pass
     return raw, _parse_robots_txt(raw)
@@ -377,12 +378,6 @@ async def crawl(domain: str, corpus_dir: Path, budget: BudgetTracker) -> Dict:
 
     corpus_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. Robots.txt (synchronous — one-off before async loop)
-    print(f"[crawl] Fetching robots.txt for {base_url}")
-    robots_raw, all_rules = fetch_robots_txt(base_url)
-    ai_rules = {a: all_rules.get(a, {}) for a in AI_AGENTS}
-    ai_rules["*"] = all_rules.get("*", {})
-
     sem = asyncio.Semaphore(CONCURRENCY)
     limits = httpx.Limits(max_connections=CONCURRENCY + 2,
                           max_keepalive_connections=CONCURRENCY)
@@ -390,6 +385,12 @@ async def crawl(domain: str, corpus_dir: Path, budget: BudgetTracker) -> Dict:
 
     async with httpx.AsyncClient(headers=headers, limits=limits,
                                  http2=True) as client:
+        # 1. Robots.txt (async, bounded by budget)
+        print(f"[crawl] Fetching robots.txt for {base_url}")
+        robots_raw, all_rules = await fetch_robots_txt(base_url, client, budget)
+        ai_rules = {a: all_rules.get(a, {}) for a in AI_AGENTS}
+        ai_rules["*"] = all_rules.get("*", {})
+
         # 2. Sitemaps
         print("[crawl] Parsing sitemaps")
         sitemap_data = await parse_sitemaps(base_url, robots_raw, client)
@@ -417,6 +418,13 @@ async def crawl(domain: str, corpus_dir: Path, budget: BudgetTracker) -> Dict:
         nav_seeded = False
 
         while queue and len(crawled) < MAX_PAGES:
+            # Hard ceiling check — halt immediately if over hard deadline
+            if budget.over_hard():
+                for _pri, skip_url in queue.drain_all():
+                    budget.record_skip(skip_url,
+                                       "hard_deadline_exceeded", "crawl")
+                break
+
             # Budget gate — stop enqueueing when near soft deadline
             if budget.remaining_soft() < SOFT_MARGIN_S:
                 for _pri, skip_url in queue.drain_all():
@@ -508,7 +516,40 @@ async def main_async(domain: str, output_dir: Path,
     budget = BudgetTracker(soft_s=soft, hard_s=hard)
     print(f"[crawl] Starting: domain={domain}, output={output_dir}")
 
-    data = await crawl(domain, output_dir, budget)
+    try:
+        data = await asyncio.wait_for(
+            crawl(domain, output_dir, budget),
+            timeout=max(1.0, budget.remaining_hard()),
+        )
+    except asyncio.TimeoutError:
+        print(f"[crawl] Hard budget ceiling ({hard}s) reached! Halting crawl.")
+        budget.record_skip("all", "crawl_hard_deadline_exceeded", "crawl")
+        crawled_pages = []
+        if output_dir.exists():
+            for pdir in output_dir.iterdir():
+                meta_file = pdir / "meta.json"
+                if meta_file.exists():
+                    try:
+                        m = json.loads(meta_file.read_text(encoding="utf-8"))
+                        crawled_pages.append({
+                            "url": m.get("url"),
+                            "final_url": m.get("final_url"),
+                            "status_code": m.get("status_code"),
+                            "error": m.get("error"),
+                            "elapsed_s": m.get("elapsed_s"),
+                            "slug": pdir.name,
+                        })
+                    except Exception:
+                        pass
+        data = {
+            "base_url": domain,
+            "origin_host": domain,
+            "pages_crawled": len(crawled_pages),
+            "pages_attempted": len(crawled_pages),
+            "crawled_pages": crawled_pages,
+            "robots": {"has_robots_txt": False, "raw_length_bytes": 0, "ai_agent_rules": {}},
+            "sitemap": {"found": False, "urls": [], "sitemap_urls_fetched": [], "errors": [], "source_directives": []},
+        }
 
     manifest = {
         "schema_version": "1.0",
