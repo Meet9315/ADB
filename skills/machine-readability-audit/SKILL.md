@@ -66,7 +66,10 @@ This skill never issues network requests. It reads only from the local corpus.
 2. Parses all `<img>` tags in those zones.
 3. For each image: checks `alt` attribute (absent or empty string = candidate).
 4. Applies decorative heuristics (see Negative Logic below).
-5. Checks surrounding text (±300 chars) for context restatement (≥15 substantive words).
+5. Checks the text within ±80 chars of the `<img>` tag for a content-specific restatement
+   signal: suppresses only if the adjacent text is ≤12 words and shares ≥1 token with the
+   image `src` filename, or shares ≥2 src-filename tokens regardless of word count. Generic
+   paragraph text that merely surrounds the image does not qualify (see Negative Logic below).
 6. For text-light pages (<100 words), detects PDF/video embeds without transcript keywords.
 
 **DO NOT FIRE (Negative Logic — D2):**
