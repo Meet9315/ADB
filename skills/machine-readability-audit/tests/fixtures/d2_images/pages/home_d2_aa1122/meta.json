@@ -1,0 +1,15 @@
+{
+  "url": "https://d2test.example.com/",
+  "final_url": "https://d2test.example.com/",
+  "status_code": 200,
+  "response_headers": {},
+  "headings": {
+    "h1": [
+      "Unbeatable Widget Deals"
+    ],
+    "h2": [
+      "Plans"
+    ],
+    "h3": []
+  }
+}

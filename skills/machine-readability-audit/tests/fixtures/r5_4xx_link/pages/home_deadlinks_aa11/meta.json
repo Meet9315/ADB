@@ -1,0 +1,13 @@
+{
+  "url": "https://deadlinks.example.com/",
+  "final_url": "https://deadlinks.example.com/",
+  "status_code": 200,
+  "response_headers": {},
+  "headings": {
+    "h1": [
+      "Home"
+    ],
+    "h2": [],
+    "h3": []
+  }
+}

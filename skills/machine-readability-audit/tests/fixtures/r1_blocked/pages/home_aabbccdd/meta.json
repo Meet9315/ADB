@@ -1,0 +1,13 @@
+{
+  "url": "https://blocked.example.com/",
+  "final_url": "https://blocked.example.com/",
+  "status_code": 200,
+  "response_headers": {},
+  "headings": {
+    "h1": [
+      "World-Class Widgets"
+    ],
+    "h2": [],
+    "h3": []
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "url": "https://nosit.example.com/page2",
+  "final_url": "https://nosit.example.com/page2",
+  "status_code": 200,
+  "response_headers": {},
+  "headings": {
+    "h1": [
+      "Test Page"
+    ],
+    "h2": [],
+    "h3": []
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "url": "https://noindex.example.com/login",
+  "final_url": "https://noindex.example.com/login",
+  "status_code": 200,
+  "response_headers": {},
+  "headings": {
+    "h1": [
+      "Sign in to your account"
+    ],
+    "h2": [],
+    "h3": []
+  }
+}

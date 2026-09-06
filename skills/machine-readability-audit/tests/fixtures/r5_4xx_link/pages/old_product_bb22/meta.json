@@ -1,0 +1,13 @@
+{
+  "url": "https://deadlinks.example.com/old-product",
+  "final_url": "https://deadlinks.example.com/old-product",
+  "status_code": 404,
+  "response_headers": {},
+  "headings": {
+    "h1": [
+      "Not Found"
+    ],
+    "h2": [],
+    "h3": []
+  }
+}

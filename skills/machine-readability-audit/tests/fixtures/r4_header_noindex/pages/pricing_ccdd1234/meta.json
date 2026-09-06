@@ -1,0 +1,15 @@
+{
+  "url": "https://headernoindex.example.com/pricing",
+  "final_url": "https://headernoindex.example.com/pricing",
+  "status_code": 200,
+  "response_headers": {
+    "X-Robots-Tag": "noindex"
+  },
+  "headings": {
+    "h1": [
+      "Our Pricing"
+    ],
+    "h2": [],
+    "h3": []
+  }
+}

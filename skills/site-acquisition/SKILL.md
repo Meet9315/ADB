@@ -184,3 +184,79 @@ corpus/<domain_slug>/
 - **Strictly Read-Only**: Issues exclusively HTTP GET and HEAD requests. Never submits forms, executes destructive calls, or accesses authenticated endpoints.
 - **Robots-Compliant**: Disallow directives for standard crawlers are strictly obeyed.
 - **Sandboxed Execution**: Enforces a 25-page cap, maximum 6 concurrency, 10s page timeout, and a 300s absolute runtime ceiling.
+
+## Reach-Layer Analysis (`scripts/reach_checks.py`)
+
+The `reach_checks.py` script runs after the corpus is collected, reading only the manifest and on-disk corpus files (except R2 which issues a paired live fetch as explicitly required by the check specification).
+
+### R1 — AI Crawlers Blocked in robots.txt
+
+**DO NOT FIRE when:**
+- `robots.txt` is entirely absent (that condition is informational context, not an R1 finding;
+  the absence itself doesn't constitute an active block).
+- The AI agent's `Disallow` list covers only non-root subpaths that are legitimately private
+  (e.g. `/private/`, `/admin/`, `/internal/`) **without** blocking `/` (root). A site that
+  protects its admin panel but leaves the public content open is not bot-walling.
+- Only a `Crawl-delay` directive is present. A crawl delay is throttling, not a block.
+- The `Disallow` value is empty or `Disallow:` with no path (which per spec means allow all).
+
+**Severity distinction (required in every finding, not just internally):**
+- `training_bots_only` (medium): Only GPTBot, CCBot, and/or Google-Extended are root-blocked.
+  Assistant/indexing bots (ClaudeBot, PerplexityBot, Bingbot) remain unblocked. This prevents
+  training-data collection but does not prevent AI assistants from reading the site.
+- `all_access` (high): One or more assistant/indexing bots (ClaudeBot, PerplexityBot, Bingbot)
+  are also root-blocked. AI systems that answer queries by fetching live content cannot access
+  the site at all.
+
+---
+
+### R2 — Bot-Walling (UA-Differential Response)
+
+**DO NOT FIRE when:**
+- Both requests return HTTP 200 and the normalized body length difference is less than 50%.
+- The status difference is explainable by CDN behavior, localization, compression, or
+  harmless UA-specific variations (e.g. different cookie consent dialogs).
+- A transient 5xx error occurred — the check retries once before concluding. A single
+  transient server error is not sufficient evidence.
+- The `Content-Length` response header differs but the actual response body (after stripping
+  scripts, styles, and whitespace) does not show a material difference. Header-only differences
+  are explicitly excluded as evidence.
+- The plain/bot UA response is HTTP 200 with more than 200 normalized characters of HTML —
+  this indicates the site is serving meaningful content regardless of UA.
+
+---
+
+### R3 — No/Broken Sitemap
+
+**DO NOT FIRE when:**
+- The site has 4 or fewer total crawled pages and the homepage is reachable. Very small
+  sites (personal pages, single-product landing pages) have no meaningful obligation to
+  maintain a sitemap.
+- All navigation-discovered pages already appear in the sitemap URL list (after URL
+  normalization: stripping www, trailing slash, tracking parameters).
+- A page is absent from the sitemap but already carries a `noindex` directive — that page
+  is legitimately excluded from indexing and sitemap presence is irrelevant.
+- Sitemap fetch errors are transient HTTP 5xx — the crawler's retry behavior already
+  accounts for this, so findings are only raised on definitive 4xx or parse failures.
+
+---
+
+### R5 — Redirect Chains / Canonical Conflicts / 4xx Internal Links
+
+**DO NOT FIRE on canonical/OG conflict when:**
+- Normalization (stripping `www.`, `http` vs `https`, trailing slash, URL fragment, or known
+  tracking parameters: `utm_*`, `fbclid`, `gclid`, `msclkid`, `ref`, `source`, `mc_cid`,
+  `mc_eid`) resolves the apparent difference between `<link rel="canonical">` and
+  `<meta property="og:url">`. Only flag when the normalized targets clearly assert different
+  page identity.
+- Either `canonical` or `og:url` is absent — the check requires both to be present and
+  conflicting to constitute a finding.
+
+**DO NOT FIRE on redirect chains when:**
+- The chain contains fewer than 3 hops.
+- All hops are same-origin redirects (e.g. http→https, www→non-www) that resolve correctly.
+
+**DO NOT FIRE on 4xx internal links when:**
+- The URL with the 4xx status is cross-origin (external resource). Only same-origin 4xx
+  links are flagged.
+

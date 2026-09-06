@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.0",
+  "tool": "site-acquisition/crawl.py",
+  "domain": "clean.example.com",
+  "base_url": "https://clean.example.com",
+  "origin_host": "clean.example.com",
+  "pages_crawled": 1,
+  "pages_attempted": 1,
+  "budget": {
+    "started_at": 1788688577.7407126,
+    "elapsed_s": 5.0,
+    "soft_deadline_s": 240.0,
+    "hard_deadline_s": 300.0,
+    "over_soft": false,
+    "over_hard": false
+  },
+  "robots": {
+    "has_robots_txt": true,
+    "raw_length_bytes": 80,
+    "ai_agent_rules": {
+      "GPTBot": {
+        "disallow": [],
+        "allow": [],
+        "crawl_delay": null
+      },
+      "ClaudeBot": {
+        "disallow": [],
+        "allow": [],
+        "crawl_delay": null
+      },
+      "PerplexityBot": {
+        "disallow": [],
+        "allow": [],
+        "crawl_delay": null
+      },
+      "Google-Extended": {
+        "disallow": [],
+        "allow": [],
+        "crawl_delay": null
+      },
+      "CCBot": {
+        "disallow": [],
+        "allow": [],
+        "crawl_delay": null
+      },
+      "Bingbot": {
+        "disallow": [],
+        "allow": [],
+        "crawl_delay": null
+      }
+    }
+  },
+  "sitemap": {
+    "found": true,
+    "urls": [
+      "https://clean.example.com/",
+      "https://clean.example.com/about",
+      "https://clean.example.com/pricing"
+    ],
+    "sitemap_urls_fetched": [
+      "https://clean.example.com/sitemap.xml"
+    ],
+    "errors": [],
+    "source_directives": []
+  },
+  "crawled_pages": [
+    {
+      "url": "https://clean.example.com/",
+      "final_url": "https://clean.example.com/",
+      "status_code": 200,
+      "error": null,
+      "elapsed_s": 0.35,
+      "slug": "home_clean_aabb1122",
+      "redirect_count": 0
+    }
+  ],
+  "skips": []
+}

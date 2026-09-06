@@ -1,0 +1,13 @@
+{
+  "url": "https://conflictcanon.example.com/products/widget-blue",
+  "final_url": "https://conflictcanon.example.com/products/widget-blue",
+  "status_code": 200,
+  "response_headers": {},
+  "headings": {
+    "h1": [
+      "Widget Blue"
+    ],
+    "h2": [],
+    "h3": []
+  }
+}

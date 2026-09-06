@@ -1,0 +1,15 @@
+{
+  "url": "https://noindex.example.com/widget-pro",
+  "final_url": "https://noindex.example.com/widget-pro",
+  "status_code": 200,
+  "response_headers": {},
+  "headings": {
+    "h1": [
+      "Widget Pro \u2014 $49.99"
+    ],
+    "h2": [
+      "Pricing"
+    ],
+    "h3": []
+  }
+}

@@ -1,0 +1,81 @@
+{
+  "schema_version": "1.0",
+  "tool": "site-acquisition/crawl.py",
+  "domain": "deadlinks.example.com",
+  "base_url": "https://deadlinks.example.com",
+  "origin_host": "deadlinks.example.com",
+  "pages_crawled": 1,
+  "pages_attempted": 1,
+  "budget": {
+    "started_at": 1788688577.6856434,
+    "elapsed_s": 5.0,
+    "soft_deadline_s": 240.0,
+    "hard_deadline_s": 300.0,
+    "over_soft": false,
+    "over_hard": false
+  },
+  "skips": [],
+  "robots": {
+    "has_robots_txt": true,
+    "raw_length_bytes": 50,
+    "ai_agent_rules": {
+      "GPTBot": {
+        "disallow": [],
+        "allow": [],
+        "crawl_delay": null
+      },
+      "ClaudeBot": {
+        "disallow": [],
+        "allow": [],
+        "crawl_delay": null
+      },
+      "PerplexityBot": {
+        "disallow": [],
+        "allow": [],
+        "crawl_delay": null
+      },
+      "Google-Extended": {
+        "disallow": [],
+        "allow": [],
+        "crawl_delay": null
+      },
+      "CCBot": {
+        "disallow": [],
+        "allow": [],
+        "crawl_delay": null
+      },
+      "Bingbot": {
+        "disallow": [],
+        "allow": [],
+        "crawl_delay": null
+      }
+    }
+  },
+  "sitemap": {
+    "found": true,
+    "urls": [
+      "https://deadlinks.example.com/"
+    ],
+    "sitemap_urls_fetched": [],
+    "errors": [],
+    "source_directives": []
+  },
+  "crawled_pages": [
+    {
+      "url": "https://deadlinks.example.com/",
+      "final_url": "https://deadlinks.example.com/",
+      "status_code": 200,
+      "error": null,
+      "elapsed_s": 0.3,
+      "slug": "home_deadlinks_aa11"
+    },
+    {
+      "url": "https://deadlinks.example.com/old-product",
+      "final_url": "https://deadlinks.example.com/old-product",
+      "status_code": 404,
+      "error": null,
+      "elapsed_s": 0.2,
+      "slug": "old_product_bb22"
+    }
+  ]
+}
