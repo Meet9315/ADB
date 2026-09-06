@@ -77,9 +77,19 @@ This skill never issues network requests. It reads only from the local corpus.
 - **Decorative class keywords**: Image `class` attribute contains `icon`, `logo`, `avatar`,
   `badge`, `bullet`, `divider`, `separator`, `social`, `spinner`, `emoji`.
 - **Decorative dimensions**: Both inline `width` and `height` attributes are ≤50px.
-- **Sufficient surrounding text context**: ≥15 substantive words (length >2 chars) within
-  300 characters of the `<img>` tag already describe what the image shows. Each suppressed
-  image records exactly which heuristic triggered in `false_positive_guard`.
+- **Sufficient surrounding text context** (strict signal — word count alone is not sufficient):
+  A finding is suppressed only if the text within ±80 chars of the `<img>` tag satisfies
+  ONE of the following two conditions:
+  - **Caption-proximity**: The adjacent text is ≤12 words AND contains at least one token
+    (length >3, not a generic stop-word) that also appears in the image's `src` filename.
+    Example: `"Pricing table: monthly and annual plans"` adjacent to `/pricing-table.png`
+    satisfies this because `pricing` and `table` appear in both.
+  - **Alt-candidate overlap**: The adjacent text contains ≥2 src-filename tokens regardless
+    of word count.
+  Generic nearby paragraph text — even long paragraphs that happen to be near the image —
+  does NOT qualify. The suppression must demonstrate that the adjacent text specifically
+  describes *this image*, not just surrounds it. Each suppressed image records the exact
+  signal that triggered suppression in `false_positive_guard`.
 - **CSS background images**: Only `<img>` elements are checked. `background-image` CSS
   properties are excluded — they are decorative by convention.
 - **Below-fold images**: Only images within `<header>`, `<section>` elements, or elements

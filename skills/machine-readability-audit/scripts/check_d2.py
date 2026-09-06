@@ -57,9 +57,9 @@ DECORATIVE_CLASS_KEYWORDS = {
 # Maximum image dimension (inline width/height) to consider decorative
 MAX_DECORATIVE_PX = 50
 
-# Minimum surrounding text length to consider "context restatement"
-CONTEXT_WINDOW_CHARS = 300
-MIN_RESTATEMENT_WORDS = 15  # Must be substantial paragraph text, not just nav/heading boilerplate
+# Characters *immediately* before/after the img tag to consider as a caption.
+# This tight window prevents unrelated paragraph text from acting as a restatement guard.
+CAPTION_WINDOW_CHARS = 80
 
 FINDING_ID_COUNTER: Dict[str, int] = {}
 
@@ -113,14 +113,14 @@ def _parse_img_tags(html_zone: str) -> List[Dict]:
         attrs_str = m.group(1)
         pos = m.start()
 
-        def _attr(name: str) -> Optional[str]:
+        def _attr(name: str, _attrs=attrs_str) -> Optional[str]:
             a = re.search(
-                rf'{name}\s*=\s*["\']([^"\']*)["\']', attrs_str, re.IGNORECASE
+                rf'{name}\s*=\s*["\']([^"\']*)["\']', _attrs, re.IGNORECASE
             )
             if a:
                 return a.group(1)
             # Bare attribute (e.g. alt=word without quotes)
-            b = re.search(rf'{name}\s*=\s*(\S+)', attrs_str, re.IGNORECASE)
+            b = re.search(rf'{name}\s*=\s*(\S+)', _attrs, re.IGNORECASE)
             return b.group(1) if b else None
 
         imgs.append({
@@ -130,15 +130,17 @@ def _parse_img_tags(html_zone: str) -> List[Dict]:
             "height": _attr("height"),
             "class": _attr("class") or "",
             "position": pos,
-            "surrounding_text": _get_surrounding_text(html_zone, pos),
+            # Wide window for decorative/class checks; tight for caption guard
+            "surrounding_text": _get_surrounding_text(html_zone, pos, window=300),
+            "caption_text": _get_surrounding_text(html_zone, pos, window=CAPTION_WINDOW_CHARS),
         })
     return imgs
 
 
-def _get_surrounding_text(html: str, pos: int) -> str:
-    """Extract visible text within ±CONTEXT_WINDOW_CHARS of position."""
-    start = max(0, pos - CONTEXT_WINDOW_CHARS)
-    end = min(len(html), pos + CONTEXT_WINDOW_CHARS)
+def _get_surrounding_text(html: str, pos: int, window: int = 300) -> str:
+    """Extract visible text within ±window chars of position."""
+    start = max(0, pos - window)
+    end = min(len(html), pos + window)
     snippet = html[start:end]
     # Strip tags
     text = re.sub(r"<[^>]+>", " ", snippet)
@@ -185,18 +187,66 @@ def _is_decorative(img: Dict) -> Tuple[bool, str]:
     return False, ""
 
 
-def _context_restates_content(surrounding_text: str) -> Tuple[bool, str]:
+def _context_restates_content(img: Dict) -> Tuple[bool, str]:
     """
-    Return (restates, reason). Heuristic: if surrounding text has ≥MIN_RESTATEMENT_WORDS
-    substantive words, assume it provides context for the image.
-    (A more precise implementation would compare image filename/alt candidate
-    against the text, but without ML this is our conservative guard.)
+    Return (restates, reason).
+
+    A genuine restatement guard requires ONE of the following, checked in order:
+
+    1. Caption-proximity signal: Immediately adjacent text (±80 chars of the
+       <img> tag, after stripping HTML) is a short phrase (≤12 words) AND shares
+       at least one substantive token (len >3, not in a stop-word set) with the
+       image's src filename. This matches: a real figure caption, a label placed
+       directly under/above the image, or an aria-label-style descriptor.
+
+    2. Alt-candidate overlap: The adjacent text (±80 chars) contains at least 2
+       substantive tokens (len >3) from the src filename. This handles cases where
+       the image filename itself is descriptive (e.g. pricing-table.png near a
+       heading "Pricing Table").
+
+    Word count alone (even 100 words) is NOT sufficient. A page with paragraph
+    text nearby that does not specifically describe the image content still fires.
     """
-    words = [w for w in surrounding_text.split() if len(w) > 2]
-    if len(words) >= MIN_RESTATEMENT_WORDS:
-        sample = " ".join(words[:8])
-        return True, f"surrounding text has {len(words)} words: '{sample}...'"
-    return False, f"surrounding text has only {len(words)} word(s)"
+    src = img.get("src", "")
+    caption_text = img.get("caption_text", "")
+
+    # Tokenise src filename into meaningful segments
+    fname = _filename_from_src(src)
+    # Split on non-alphanumeric; filter stop-tokens and short tokens
+    STOP_TOKENS = {
+        "img", "image", "photo", "pic", "picture", "jpg", "png", "gif",
+        "webp", "svg", "file", "the", "and", "for", "with", "from",
+        "this", "that", "new", "old", "get", "set", "all",
+    }
+    fname_tokens = {
+        t for t in re.split(r"[^a-z0-9]+", fname.lower())
+        if len(t) > 3 and t not in STOP_TOKENS
+    }
+
+    caption_lower = caption_text.lower()
+    caption_words = [w for w in re.split(r"\W+", caption_lower) if len(w) > 3 and w not in STOP_TOKENS]
+    caption_word_count = len([w for w in caption_text.split() if len(w) > 2])
+
+    # Guard 1: caption-proximity — short adjacent text that shares ≥1 token with src
+    overlap = fname_tokens & set(caption_words)
+    if caption_word_count <= 12 and len(overlap) >= 1:
+        return True, (
+            f"caption-proximity signal: {caption_word_count} words immediately adjacent, "
+            f"shares token(s) {sorted(overlap)} with src filename '{fname}'"
+        )
+
+    # Guard 2: alt-candidate overlap — ≥2 src tokens found in adjacent text
+    if len(overlap) >= 2:
+        return True, (
+            f"alt-candidate overlap: {len(overlap)} src filename token(s) "
+            f"{sorted(overlap)} found within {CAPTION_WINDOW_CHARS} chars"
+        )
+
+    # No restatement evidence found — do not suppress the finding
+    return False, (
+        f"no content-restatement signal: caption_words={caption_word_count}, "
+        f"src_tokens={sorted(fname_tokens)}, overlap={sorted(overlap)}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -241,8 +291,8 @@ def check_d2(corpus_dir: Path) -> List[Dict]:
             if is_dec:
                 continue
 
-            # Check surrounding text context
-            restates, restate_reason = _context_restates_content(img["surrounding_text"])
+            # Check surrounding text context — requires content-specific signal, not word count
+            restates, restate_reason = _context_restates_content(img)
             if restates:
                 continue
 

@@ -32,7 +32,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
 # ---------------------------------------------------------------------------
@@ -66,7 +66,6 @@ def _new_id(check_id: str) -> str:
 
 def _is_excluded_page(url: str, title: str) -> Tuple[bool, str]:
     """Return (is_excluded, reason) for this page."""
-    from typing import Tuple
     path = urlparse(url).path.lower().strip("/")
     path_parts = set(path.split("/"))
 
@@ -113,7 +112,6 @@ def _extract_title(html: str) -> str:
 
 def check_r4(corpus_dir: Path, manifest: Optional[Dict] = None) -> List[Dict]:
     """Run R4 on all pages in corpus_dir."""
-    from typing import Tuple
     findings: List[Dict] = []
 
     for page_dir in sorted(corpus_dir.iterdir()):
