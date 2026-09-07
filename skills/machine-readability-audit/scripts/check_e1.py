@@ -56,27 +56,28 @@ def _get_diagnostic_page_expected_schemas(
         path = "/"
 
     if archetype_name == "ecommerce":
-        # 1. Product detail page: requires primary Product entity (not generic ItemList or Organization)
+        # 1. Product detail page: requires primary Product entity (not generic ItemList, Offer, or Organization)
         has_price = bool(re.search(r"[$€£]\s*\d+(?:\.\d{2})?", html))
         has_buy_button = bool(re.search(r'(?:add\s+to\s+cart|buy\s+now|checkout)', html, re.IGNORECASE))
         if PRODUCT_DETAIL_PATH_RE.search(path) or (has_price and has_buy_button):
             return "product_detail", {"Product", "IndividualProduct"}
-        # 2. Product catalog / collection listing
+        # 2. Product catalog / collection listing: requires ItemList collection (not single Product or Organization)
         if CATALOG_PATH_RE.search(path):
-            return "catalog_listing", {"ItemList", "Product"}
+            return "catalog_listing", {"ItemList"}
 
     elif archetype_name == "saas":
         # Core software offering: requires actual software/application entity,
-        # not generic Organization/WebSite which creates false negatives
-        if path in ("/", "/pricing", "/features", "/product", "/platform"):
-            return "software_offering", {"SoftwareApplication", "WebApplication", "SaaS", "Product"}
+        # not generic Organization/WebSite/Product which creates false negatives
+        saas_core_paths = {"/", "/pricing", "/features", "/product", "/platform", "/app", "/software"}
+        if path in saas_core_paths or any(path.startswith(f"{p}/") for p in ("/features", "/product", "/platform", "/app")):
+            return "software_offering", {"SoftwareApplication", "WebApplication", "MobileApplication"}
 
     elif archetype_name == "news":
-        # News article pages: requires NewsArticle or Article
+        # News article pages: requires NewsArticle or ReportageNewsArticle
         has_byline = bool(re.search(r'class=["\'][^"\']*(?:byline|author)[^"\']*["\']', html, re.IGNORECASE))
         has_pubdate = bool(re.search(r'class=["\'][^"\']*(?:pubdate|date|publish)[^"\']*["\']', html, re.IGNORECASE))
         if ARTICLE_PATH_RE.search(path) or (has_byline and has_pubdate):
-            return "news_article", {"NewsArticle", "ReportageNewsArticle", "Article"}
+            return "news_article", {"NewsArticle", "ReportageNewsArticle"}
 
     elif archetype_name == "content":
         # Content / blog article pages: requires Article or BlogPosting
@@ -90,6 +91,7 @@ def _get_diagnostic_page_expected_schemas(
             return "local_business", {
                 "LocalBusiness", "Restaurant", "Store", "MedicalBusiness", "Dentist",
                 "Hotel", "FoodEstablishment", "LodgingBusiness", "AutoDealer", "CleaningService",
+                "HomeAndConstructionBusiness",
             }
 
     elif archetype_name == "corporate":
@@ -176,7 +178,7 @@ def run_check_e1(
 
         for url, html, exp in p_list:
             records = extract_structured_data(html)
-            found_types = {r.schema_type for r in records}
+            found_types = {r.schema_type for r in records if r.schema_type}
             if not (found_types & exp):
                 pages_lacking_schema.append(url)
 
@@ -217,7 +219,7 @@ def run_check_e1(
                     f"Evaluated {len(p_list)} diagnostic pages matching verified {primary_archetype} patterns. "
                     "Extracted JSON-LD, Microdata, and RDFa across DOM before declaring schema absent."
                 ),
-                "verification_method": f"curl -sL {primary_url} | grep -E -i 'application/ld\\+json|itemtype=[\"\\']https?://schema\\.org/|typeof='",
+                "verification_method": f"curl -sL {primary_url} | grep -E -i 'application/ld\\+json|itemtype|typeof'",
             })
 
     return findings

@@ -476,6 +476,71 @@ with tempfile.TemporaryDirectory() as tmp_e1:
         print(f"  FAIL [E1] Expected 1 E1 finding for unannotated product page, got {e1_findings}")
     test("E1 detects missing Product schema on ecommerce product pages with multi-syntax verification", e1_ok)
 
+# --- E1: Related-but-insufficient schema does NOT suppress finding ---
+print("\n[E1-insufficient-schema] Related schema (Organization/ItemList) does not suppress Product requirement")
+with tempfile.TemporaryDirectory() as tmp_e1_insuff:
+    tmp_path = Path(tmp_e1_insuff)
+    p_dir = tmp_path / "pages" / "prod"
+    p_dir.mkdir(parents=True)
+
+    # Page has Organization and ItemList schema, but lacks Product/IndividualProduct
+    html_with_org = (
+        "<!DOCTYPE html><html><head><title>Gadget | Store</title>"
+        "<script type='application/ld+json'>{\"@context\": \"https://schema.org\", \"@type\": \"Organization\", \"name\": \"Store Corp\"}</script>"
+        "<script type='application/ld+json'>{\"@context\": \"https://schema.org\", \"@type\": \"ItemList\", \"name\": \"Nav Menu\"}</script>"
+        "</head><body>"
+        "<main><h1>Super Gadget</h1><p>Price: $99.00</p><button>Add to Cart</button></main>"
+        "</body></html>"
+    )
+    (p_dir / "raw.html").write_text(html_with_org, encoding="utf-8")
+    (p_dir / "meta.json").write_text(json.dumps({"url": "https://store.example.com/products/gadget", "status_code": 200}), encoding="utf-8")
+
+    m_dict = {
+        "schema_version": "1.0",
+        "domain": "store.example.com",
+        "base_url": "https://store.example.com",
+        "crawled_pages": [{"url": "https://store.example.com/products/gadget", "slug": "prod", "status_code": 200}],
+    }
+    (tmp_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    insuff_findings = run_e1(tmp_path)
+    # Organization/ItemList MUST NOT suppress the product requirement
+    insuff_ok = len(insuff_findings) == 1 and insuff_findings[0]["check_id"] == "E1"
+    if not insuff_ok:
+        print(f"  FAIL [E1-insufficient] Expected finding not suppressed by Organization/ItemList, got: {insuff_findings}")
+    test("E1 does NOT suppress finding when related-but-insufficient schema is present", insuff_ok)
+
+# --- E1: Compliant schema produces zero findings ---
+print("\n[E1-compliant-schema] Compliant Product schema produces 0 findings")
+with tempfile.TemporaryDirectory() as tmp_e1_comp:
+    tmp_path = Path(tmp_e1_comp)
+    p_dir = tmp_path / "pages" / "prod"
+    p_dir.mkdir(parents=True)
+
+    html_with_prod = (
+        "<!DOCTYPE html><html><head><title>Gadget | Store</title>"
+        "<script type='application/ld+json'>{\"@context\": \"https://schema.org\", \"@type\": \"Product\", \"name\": \"Super Gadget\"}</script>"
+        "</head><body>"
+        "<main><h1>Super Gadget</h1><p>Price: $99.00</p><button>Add to Cart</button></main>"
+        "</body></html>"
+    )
+    (p_dir / "raw.html").write_text(html_with_prod, encoding="utf-8")
+    (p_dir / "meta.json").write_text(json.dumps({"url": "https://store.example.com/products/gadget", "status_code": 200}), encoding="utf-8")
+
+    m_dict = {
+        "schema_version": "1.0",
+        "domain": "store.example.com",
+        "base_url": "https://store.example.com",
+        "crawled_pages": [{"url": "https://store.example.com/products/gadget", "slug": "prod", "status_code": 200}],
+    }
+    (tmp_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    comp_findings = run_e1(tmp_path)
+    comp_ok = len(comp_findings) == 0
+    if not comp_ok:
+        print(f"  FAIL [E1-compliant] Expected 0 findings with valid Product schema, got: {comp_findings}")
+    test("E1 produces 0 findings when diagnostic page contains expected Product schema", comp_ok)
+
 # --- E4: Duplicate/missing titles and meta descriptions ---
 print("\n[E4-meta-descriptions-titles] Duplicate titles and missing meta descriptions")
 with tempfile.TemporaryDirectory() as tmp_e4:
