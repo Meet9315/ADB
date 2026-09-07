@@ -100,7 +100,14 @@ def _extract_prominent_html(html: str) -> str:
         ):
             zones.append(m.group(1))
 
-    return "\n".join(zones) if zones else html[:3000]  # Fallback: first 3000 chars
+    if zones:
+        return "\n".join(zones)
+    # If no designated section or hero zones exist, inspect main or body
+    m_main = re.search(r"<main[^>]*>(.*?)</main>", html, re.DOTALL | re.IGNORECASE)
+    if m_main:
+        return m_main.group(1)
+    m_body = re.search(r"<body[^>]*>(.*?)</body>", html, re.DOTALL | re.IGNORECASE)
+    return m_body.group(1) if m_body else html
 
 
 def _parse_img_tags(html_zone: str) -> List[Dict]:
@@ -255,6 +262,7 @@ def _context_restates_content(img: Dict) -> Tuple[bool, str]:
 
 def check_d2(corpus_dir: Path) -> List[Dict]:
     """Run D2 on all pages in corpus_dir."""
+    FINDING_ID_COUNTER["D2"] = 0
     findings: List[Dict] = []
 
     for page_dir in sorted(corpus_dir.iterdir()):
@@ -339,7 +347,7 @@ def check_d2(corpus_dir: Path) -> List[Dict]:
                 html, re.IGNORECASE,
             ))
             has_video = bool(re.search(
-                r'<(?:video|iframe)[^>]+(?:src|data)=["\'][^"\']*["\']',
+                r'<video[^>]*>|<iframe[^>]+src=["\'][^"\']*(?:youtube\.com|youtu\.be|vimeo\.com|wistia\.com|loom\.com|\.mp4|\.webm|video/)[^"\']*["\']',
                 html, re.IGNORECASE,
             ))
             has_transcript = bool(re.search(

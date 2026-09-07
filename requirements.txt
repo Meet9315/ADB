@@ -1,0 +1,5 @@
+# Project dependencies for AI-Discoverability Audit (ADB)
+-r skills/site-acquisition/requirements.txt
+-r skills/machine-readability-audit/requirements.txt
+-r skills/audit-orchestrator/requirements.txt
+pytest>=8.0.0

@@ -30,7 +30,7 @@ PROACTIVE_CATALOG: Dict[str, List[Dict[str, Any]]] = {
                 "Add structured MerchantReturnPolicy schema linked via hasMerchantReturnPolicy. "
                 "This enables AI shopping agents to quote exact return windows and refund policies."
             ),
-            "code_snippet": '{\n  "@type": "MerchantReturnPolicy",\n  "merchantReturnDays": 30\n}',
+            "code_snippet": '{\n  "@type": "MerchantReturnPolicy",\n  "merchantReturnDays": "<actual_return_days_e.g._30>"\n}',
             "priority": "medium",
         },
         {
@@ -40,7 +40,7 @@ PROACTIVE_CATALOG: Dict[str, List[Dict[str, Any]]] = {
                 "Add shippingDetails to Offer schemas to specify delivery transit times and rates "
                 "for conversational shopping comparisons."
             ),
-            "code_snippet": '{\n  "@type": "OfferShippingDetails",\n  "shippingRate": { "@type": "MonetaryAmount", "value": "0.00", "currency": "USD" }\n}',
+            "code_snippet": '{\n  "@type": "OfferShippingDetails",\n  "shippingRate": { "@type": "MonetaryAmount", "value": "<shipping_rate>", "currency": "<currency_code>" }\n}',
             "priority": "medium",
         },
     ],
@@ -52,7 +52,7 @@ PROACTIVE_CATALOG: Dict[str, List[Dict[str, Any]]] = {
                 "Deploy a standard /llms.txt endpoint giving AI assistants and code agents "
                 "an authoritative summary of product APIs, pricing tiers, and capabilities."
             ),
-            "code_snippet": "# /llms.txt\n> Developer-friendly cloud orchestration API.\n- [Docs](/docs)",
+            "code_snippet": "# /llms.txt\n> <Brief product value proposition statement>\n- [Docs](/docs)",
             "priority": "medium",
         },
         {
@@ -61,7 +61,7 @@ PROACTIVE_CATALOG: Dict[str, List[Dict[str, Any]]] = {
             "description": (
                 "Add SoftwareApplication schema detailing pricing tiers, applicationCategory, and feature lists."
             ),
-            "code_snippet": '{\n  "@type": "SoftwareApplication",\n  "applicationCategory": "BusinessApplication"\n}',
+            "code_snippet": '{\n  "@type": "SoftwareApplication",\n  "name": "<Application Name>",\n  "applicationCategory": "BusinessApplication"\n}',
             "priority": "low",
         },
     ],
@@ -81,7 +81,7 @@ PROACTIVE_CATALOG: Dict[str, List[Dict[str, Any]]] = {
             "description": (
                 "Ensure every <pre><code> block has a language class for automated AI extraction."
             ),
-            "code_snippet": '<pre><code class="language-bash">npm install acme-sdk</code></pre>',
+            "code_snippet": '<pre><code class="language-bash">npm install <package-name></code></pre>',
             "priority": "low",
         },
     ],
@@ -92,7 +92,7 @@ PROACTIVE_CATALOG: Dict[str, List[Dict[str, Any]]] = {
             "description": (
                 "Markup authors with Person schema including sameAs links to verified journalism profiles."
             ),
-            "code_snippet": '{\n  "@type": "Person",\n  "name": "Reporter Name"\n}',
+            "code_snippet": '{\n  "@type": "Person",\n  "name": "<author_name>"\n}',
             "priority": "medium",
         },
     ],
@@ -103,7 +103,7 @@ PROACTIVE_CATALOG: Dict[str, List[Dict[str, Any]]] = {
             "description": (
                 "Provide ISO opening hours and latitude/longitude in LocalBusiness schema."
             ),
-            "code_snippet": '{\n  "@type": "LocalBusiness",\n  "geo": { "@type": "GeoCoordinates", "latitude": 37.77, "longitude": -122.41 }\n}',
+            "code_snippet": '{\n  "@type": "LocalBusiness",\n  "geo": { "@type": "GeoCoordinates", "latitude": "<business_latitude>", "longitude": "<business_longitude>" }\n}',
             "priority": "medium",
         },
     ],
@@ -114,7 +114,7 @@ PROACTIVE_CATALOG: Dict[str, List[Dict[str, Any]]] = {
             "description": (
                 "Declare Corporation schema with legalName, contactPoint for press, and investor relations."
             ),
-            "code_snippet": '{\n  "@type": "Corporation",\n  "legalName": "Corporate Name Inc."\n}',
+            "code_snippet": '{\n  "@type": "Corporation",\n  "legalName": "<legal_corporate_name>"\n}',
             "priority": "low",
         },
     ],
@@ -181,7 +181,7 @@ def build_final_report(
             covered_topics.add(f.evidence["field"])
 
     proactive_recs: List[SuggestedAction] = []
-    candidates = PROACTIVE_CATALOG.get(archetype, PROACTIVE_CATALOG.get("saas", []))
+    candidates = PROACTIVE_CATALOG.get(archetype, [])
     for p in candidates:
         if p["topic"] not in covered_topics:
             proactive_recs.append(SuggestedAction(

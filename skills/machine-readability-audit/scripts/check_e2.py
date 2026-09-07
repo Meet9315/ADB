@@ -164,6 +164,43 @@ def _validate_required_properties(
                 "present_keys": list(record.properties.keys()),
             }
 
+    # If LocalBusiness, require address OR telephone
+    if stype == "LocalBusiness":
+        has_addr = bool(record.properties.get("address"))
+        has_tel = bool(record.properties.get("telephone"))
+        if not (has_addr or has_tel):
+            return {
+                "schema_type": stype,
+                "syntax": record.syntax,
+                "missing_required": ["address or telephone"],
+                "present_keys": list(record.properties.keys()),
+            }
+
+    # If Organization / Corporation, require url
+    if stype in ("Organization", "Corporation"):
+        if not record.properties.get("url"):
+            return {
+                "schema_type": stype,
+                "syntax": record.syntax,
+                "missing_required": ["url"],
+                "present_keys": list(record.properties.keys()),
+            }
+
+    # If Article / NewsArticle / BlogPosting, require author AND datePublished
+    if stype in ("Article", "NewsArticle", "BlogPosting"):
+        missing_article_props = []
+        if not record.properties.get("author"):
+            missing_article_props.append("author")
+        if not record.properties.get("datePublished"):
+            missing_article_props.append("datePublished")
+        if missing_article_props:
+            return {
+                "schema_type": stype,
+                "syntax": record.syntax,
+                "missing_required": missing_article_props,
+                "present_keys": list(record.properties.keys()),
+            }
+
     return None
 
 
@@ -180,7 +217,7 @@ def _check_record_contradictions(
     props = record.properties
     vis_lower = visible_text.lower()
 
-    # 1. Price Contradiction
+    # 1. Price Contradiction (Entity-aware)
     sd_price: Optional[float] = None
     if stype in ("Offer", "Product"):
         raw_price = props.get("price")
@@ -194,13 +231,23 @@ def _check_record_contradictions(
         sd_price = _parse_price_float(raw_price)
 
     if sd_price is not None and sd_price > 0.0:
-        vis_prices = _extract_visible_prices(visible_text)
+        # Check for entity-local prices first if entity has a name
+        entity_name = str(props.get("name") or "").strip()
+        vis_prices: List[float] = []
+        if entity_name and entity_name.lower() in vis_lower:
+            idx = vis_lower.find(entity_name.lower())
+            snippet = visible_text[max(0, idx - 300):min(len(visible_text), idx + 300 + len(entity_name))]
+            local_prices = _extract_visible_prices(snippet)
+            if local_prices:
+                vis_prices = local_prices
+
+        if not vis_prices:
+            vis_prices = _extract_visible_prices(visible_text)
+
         if vis_prices:
-            # Check if sd_price matches ANY visible price
+            # Multi-tier / variant rule: If sd_price matches ANY visible price tier, do NOT contradict
             matches = any(abs(sd_price - vp) < 0.01 for vp in vis_prices)
             if not matches:
-                # Disagreement! Structured data says sd_price, but visible prices are different
-                # Choose the visible price most prominently stated
                 contradictions.append({
                     "field": "price",
                     "structured_value": sd_price,
@@ -222,7 +269,6 @@ def _check_record_contradictions(
     if raw_avail:
         avail_str = str(raw_avail).lower()
         is_instock_sd = "instock" in avail_str and "outofstock" not in avail_str
-        is_outofstock_sd = "outofstock" in avail_str or "discontinued" in avail_str
 
         # Check visible text for explicit out-of-stock badges
         out_of_stock_phrases = ["out of stock", "sold out", "currently unavailable", "backorder"]
@@ -275,11 +321,18 @@ def run_check_e2(
             except Exception:
                 pass
 
-        page_url = meta.get("url", f"https://example.com/{pdir.name}")
+        page_url = meta.get("final_url") or meta.get("url")
+        if not page_url and manifest:
+            for cp in manifest.get("crawled_pages", []):
+                if cp.get("slug") == pdir.name:
+                    page_url = cp.get("final_url") or cp.get("url")
+                    break
+        if not page_url:
+            continue
+
         raw_html = raw_path.read_text(encoding="utf-8", errors="replace")
         visible_text = text_path.read_text(encoding="utf-8", errors="replace") if text_path.exists() else ""
         if not visible_text:
-            # Fallback text extraction
             from check_d1 import _extract_visible_text
             visible_text = _extract_visible_text(raw_html)
 

@@ -34,10 +34,13 @@ from validate_report import validate_candidate, validate_report  # noqa: E402
 app = typer.Typer(help="AI Discoverability Audit Orchestrator CLI")
 
 
-def _run_cmd(cmd: List[str]) -> Tuple[int, str, str]:
-    """Execute command synchronously and return returncode, stdout, stderr."""
-    res = subprocess.run(cmd, capture_output=True, text=True)
-    return res.returncode, res.stdout, res.stderr
+def _run_cmd(cmd: List[str], timeout: Optional[float] = None) -> Tuple[int, str, str]:
+    """Execute command synchronously and return returncode, stdout, stderr, respecting timeout."""
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return res.returncode, res.stdout, res.stderr
+    except subprocess.TimeoutExpired as exc:
+        return -1, exc.stdout or "", exc.stderr or "Subprocess timed out exceeding hard budget ceiling"
 
 
 def run_audit_pipeline(
@@ -52,6 +55,9 @@ def run_audit_pipeline(
     """
     t0 = time.monotonic()
     started_iso = datetime.now(timezone.utc).isoformat()
+
+    def _rem_timeout() -> float:
+        return max(1.0, budget_hard - (time.monotonic() - t0))
 
     if output_dir is None:
         clean_domain = domain.replace("https://", "").replace("http://", "").split("/")[0].replace(":", "_")
@@ -72,21 +78,21 @@ def run_audit_pipeline(
         "--output-dir", str(corpus_pages),
         "--budget-soft", str(budget_soft),
         "--budget-hard", str(budget_hard),
-    ])
+    ], timeout=_rem_timeout())
     if code != 0:
         typer.echo(f"    [!] Crawl returned non-zero code {code}: {stderr}", err=True)
 
     # 2. Rendering: render.py
     render_script = REPO_ROOT / "skills" / "site-acquisition" / "scripts" / "render.py"
     typer.echo("    [2/6] Rendering sampled pages with Playwright...")
-    if manifest_path.exists() and corpus_pages.exists():
+    if manifest_path.exists() and corpus_pages.exists() and (time.monotonic() - t0) < (budget_hard - 10.0):
         _run_cmd([
             sys.executable, str(render_script),
             str(corpus_pages),
             str(manifest_path),
             "--budget-soft", str(budget_soft),
             "--budget-hard", str(budget_hard),
-        ])
+        ], timeout=_rem_timeout())
 
     # Check budget from manifest
     manifest_data: Dict[str, Any] = {}
@@ -105,20 +111,22 @@ def run_audit_pipeline(
     archetype_script = REPO_ROOT / "skills" / "machine-readability-audit" / "scripts" / "archetype.py"
     typer.echo("    [3/6] Inferring site archetype...")
     arch_res: Dict[str, Any] = {}
-    if manifest_path.exists():
-        _, stdout, _ = _run_cmd([
+    if manifest_path.exists() and (time.monotonic() - t0) < (budget_hard - 5.0):
+        code, stdout, stderr = _run_cmd([
             sys.executable, str(archetype_script),
             str(manifest_path),
             "--corpus-dir", str(corpus_pages),
-        ])
-        try:
-            arch_res = json.loads(stdout)
-        except Exception:
-            pass
+        ], timeout=_rem_timeout())
+        if code == -1:
+            partial_audit = True
+            partial_reason = f"Stage timed out to enforce {budget_hard}s hard ceiling."
+        else:
+            try:
+                arch_res = json.loads(stdout)
+            except Exception:
+                pass
 
-    primary_archetype = arch_res.get("archetypes", ["saas"])[0]
-    if primary_archetype == "unknown":
-        primary_archetype = "saas"
+    primary_archetype = arch_res.get("archetypes", ["unknown"])[0] if arch_res.get("archetypes") else "unknown"
     is_tiny = arch_res.get("is_tiny_site", False)
 
     # 4. Analysis checks
@@ -127,17 +135,21 @@ def run_audit_pipeline(
 
     # Reach checks (R1, R2, R3, R5)
     reach_script = REPO_ROOT / "skills" / "site-acquisition" / "scripts" / "reach_checks.py"
-    if manifest_path.exists():
-        _, stdout, _ = _run_cmd([
+    if manifest_path.exists() and (time.monotonic() - t0) < (budget_hard - 5.0):
+        code, stdout, _ = _run_cmd([
             sys.executable, str(reach_script),
             str(manifest_path),
             "--checks", "R1", "R2", "R3", "R5",
             "--corpus-dir", str(corpus_pages),
-        ])
-        try:
-            raw_candidates.extend(json.loads(stdout))
-        except Exception:
-            pass
+        ], timeout=_rem_timeout())
+        if code == -1:
+            partial_audit = True
+            partial_reason = f"Stage timed out to enforce {budget_hard}s hard ceiling."
+        else:
+            try:
+                raw_candidates.extend(json.loads(stdout))
+            except Exception:
+                pass
 
     # Machine readability checks
     mra_scripts = REPO_ROOT / "skills" / "machine-readability-audit" / "scripts"
@@ -150,18 +162,26 @@ def run_audit_pipeline(
     ]
 
     for cscript in checks:
+        if (time.monotonic() - t0) >= (budget_hard - 3.0):
+            partial_audit = True
+            partial_reason = f"Stage timed out to enforce {budget_hard}s hard ceiling."
+            break
         if cscript.exists() and corpus_pages.exists():
-            _, stdout, _ = _run_cmd([
+            code, stdout, _ = _run_cmd([
                 sys.executable, str(cscript),
                 str(corpus_pages),
                 "--manifest", str(manifest_path),
-            ])
-            try:
-                res = json.loads(stdout)
-                if isinstance(res, list):
-                    raw_candidates.extend(res)
-            except Exception:
-                pass
+            ], timeout=_rem_timeout())
+            if code == -1:
+                partial_audit = True
+                partial_reason = f"Stage timed out to enforce {budget_hard}s hard ceiling."
+            else:
+                try:
+                    res = json.loads(stdout)
+                    if isinstance(res, list):
+                        raw_candidates.extend(res)
+                except Exception:
+                    pass
 
     # 5. Merging & Deduplication
     typer.echo(f"    [5/6] Merging and validating {len(raw_candidates)} candidate findings...")

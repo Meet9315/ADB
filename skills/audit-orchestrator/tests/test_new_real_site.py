@@ -15,13 +15,20 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 from validate_report import validate_report
 
 
-def test_real_site_report():
-    report_file = REPO_ROOT / "scratch" / "fastapi_report.json"
-    if not report_file.exists():
-        print(f"Report not yet generated at {report_file}; skipping check.")
-        return
+def test_real_site_report(report_path: Path | None = None):
+    if report_path is None:
+        if len(sys.argv) > 1:
+            report_path = Path(sys.argv[1])
+        else:
+            report_path = REPO_ROOT / "scratch" / "fastapi_report.json"
 
-    data = json.loads(report_file.read_text(encoding="utf-8"))
+    if not report_path.exists():
+        raise FileNotFoundError(
+            f"Expected real site audit report at {report_path}. "
+            "Run an end-to-end audit (e.g. via audit.py) before running this test."
+        )
+
+    data = json.loads(report_path.read_text(encoding="utf-8"))
     report = validate_report(data)
 
     print(f"[PASS] Real site report successfully validated: {report.audit_metadata.target_domain}")
@@ -29,9 +36,16 @@ def test_real_site_report():
     print(f"       Archetype: {report.audit_metadata.archetype}")
     print(f"       Elapsed time: {report.audit_metadata.elapsed_s:.1f}s")
     print(f"       Proactive recommendations: {len(report.proactive_recommendations)}")
-    assert report.audit_metadata.target_domain == "fastapi.tiangolo.com"
-    assert report.summary.total_findings == len(report.findings)
+
+    # Generic report invariant assertions
+    assert report.audit_metadata.target_domain, "Target domain must be non-empty"
+    assert report.audit_metadata.archetype, "Archetype must be determined"
+    assert report.summary.total_findings == len(report.findings), "Summary count must match findings list"
+    assert report.audit_metadata.elapsed_s <= 300.0, "Audit must complete within 300s ceiling"
+    if report.findings:
+        assert len(report.recommendations) >= 1, "Report with findings must contain recommendations"
 
 
 if __name__ == "__main__":
     test_real_site_report()
+

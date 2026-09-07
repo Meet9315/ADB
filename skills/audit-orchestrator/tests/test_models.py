@@ -537,3 +537,37 @@ def test_final_report_consolidates_recommendations_and_preserves_traceability():
         assert pro.is_proactive is True
         assert pro.linked_findings == []
 
+
+def test_final_report_rejects_missing_recommendations_when_findings_exist():
+    """Verify that FinalReport rejects empty recommendations when findings are present, refusing silent repair."""
+    cand = CandidateFinding.model_validate(VALID_CANDIDATE)
+    action = SuggestedAction(
+        title="SSR Implementation",
+        description="Dynamic content on server.",
+        priority="critical",
+        linked_findings=[cand.id],
+    )
+    f = FinalFinding(
+        **cand.model_dump(),
+        final_severity="critical",
+        suggested_action=action,
+        deduped_occurrences=1,
+        affected_urls=["https://example.com/pricing"],
+    )
+    report = build_final_report(
+        target_domain="example.com",
+        base_url="https://example.com",
+        archetype="saas",
+        is_tiny_site=False,
+        started_at="2026-09-07T00:00:00Z",
+        completed_at="2026-09-07T00:01:00Z",
+        elapsed_s=60.0,
+        findings=[f],
+    )
+    report_dict = report.model_dump()
+    report_dict["recommendations"] = []  # Intentionally empty when findings exist
+    with pytest.raises(ValidationError, match="recommendations' list is empty"):
+        FinalReport.model_validate(report_dict)
+
+
+

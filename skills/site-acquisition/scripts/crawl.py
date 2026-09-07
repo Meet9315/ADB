@@ -96,13 +96,20 @@ def url_path_template(url: str) -> str:
 
 # ── Robots handling ───────────────────────────────────────────────────────
 
-def _parse_robots_txt(raw: str) -> Dict:
-    """Parse robots.txt into {agent: {disallow: [], allow: [], crawl_delay: N}}."""
-    rules: Dict = {}
+def _parse_robots_txt(raw: str) -> Dict[str, Dict]:
+    """
+    Parse robots.txt into rules dict keyed by user-agent string (lowercased).
+    Correctly supports consecutive User-agent: headers in a single record group.
+    """
+    rules: Dict[str, Dict] = {}
     current_agents: List[str] = []
+    in_directive_block = False
+
     for line in raw.splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
+            if not line:
+                in_directive_block = False
             continue
         if ":" not in line:
             continue
@@ -110,18 +117,25 @@ def _parse_robots_txt(raw: str) -> Dict:
         key = key.strip().lower()
         val = val.strip()
         if key == "user-agent":
-            current_agents = [val]
-            if val not in rules:
-                rules[val] = {"disallow": [], "allow": [], "crawl_delay": None}
+            agent_lower = val.lower()
+            if in_directive_block:
+                current_agents = [agent_lower]
+                in_directive_block = False
+            else:
+                current_agents.append(agent_lower)
+            rules.setdefault(agent_lower, {"disallow": [], "allow": [], "crawl_delay": None})
         elif key == "disallow" and val:
+            in_directive_block = True
             for a in current_agents:
                 rules.setdefault(a, {"disallow": [], "allow": [], "crawl_delay": None})
                 rules[a]["disallow"].append(val)
         elif key == "allow" and val:
+            in_directive_block = True
             for a in current_agents:
                 rules.setdefault(a, {"disallow": [], "allow": [], "crawl_delay": None})
                 rules[a]["allow"].append(val)
         elif key == "crawl-delay":
+            in_directive_block = True
             for a in current_agents:
                 rules.setdefault(a, {"disallow": [], "allow": [], "crawl_delay": None})
                 try:
@@ -133,7 +147,7 @@ def _parse_robots_txt(raw: str) -> Dict:
 
 def _is_path_disallowed(path: str, rules_for_agent: Dict) -> bool:
     """Check if *path* is disallowed by the parsed rules for a single agent."""
-    # Allow rules take precedence over Disallow for the same prefix (simple model).
+    # Allow rules take precedence over Disallow for the same prefix.
     for allowed in rules_for_agent.get("allow", []):
         if path.startswith(allowed):
             return False
@@ -146,11 +160,13 @@ def _is_path_disallowed(path: str, rules_for_agent: Dict) -> bool:
 def is_url_allowed(url: str, all_rules: Dict) -> bool:
     """Return True if our user-agent may fetch *url*."""
     path = urlparse(url).path or "/"
-    # Check agent-specific rules first, then wildcard
-    for agent_key in (USER_AGENT, "AuditBot", "*"):
-        if agent_key in all_rules:
-            if _is_path_disallowed(path, all_rules[agent_key]):
-                return False
+    # 1. Check specific matching agent first (case-insensitive)
+    for agent_candidate in (USER_AGENT.lower(), "auditbot", "bot"):
+        if agent_candidate in all_rules:
+            return not _is_path_disallowed(path, all_rules[agent_candidate])
+    # 2. Wildcard fallback only if no specific user-agent matched
+    if "*" in all_rules:
+        return not _is_path_disallowed(path, all_rules["*"])
     return True
 
 
@@ -284,11 +300,15 @@ async def fetch_page(
             elapsed = round(time.monotonic() - t0, 3)
             ct = resp.headers.get("content-type", "")
             html = resp.text if "html" in ct.lower() else ""
+            redirect_chain = [str(r.url) for r in resp.history]
+            redirect_count = len(redirect_chain)
             return {
                 "url": url, "final_url": str(resp.url),
                 "status_code": resp.status_code, "content_type": ct,
                 "html": html, "headers": dict(resp.headers),
                 "elapsed_s": elapsed, "error": None,
+                "redirect_count": redirect_count,
+                "redirect_chain": redirect_chain,
             }
         except Exception as exc:
             return {
@@ -297,6 +317,8 @@ async def fetch_page(
                 "html": "", "headers": {},
                 "elapsed_s": round(time.monotonic() - t0, 3),
                 "error": f"{type(exc).__name__}: {exc}",
+                "redirect_count": 0,
+                "redirect_chain": [],
             }
 
 
@@ -332,6 +354,9 @@ def save_page(corpus_dir: Path, result: Dict) -> Optional[str]:
         "error": result["error"],
         "headings": headings,
         "response_headers": result["headers"],
+        "redirect_count": result.get("redirect_count", 0),
+        "redirect_chain": result.get("redirect_chain", []),
+        "source_url": result.get("source_url"),
     }
     (d / "meta.json").write_text(json.dumps(meta, indent=2, default=str),
                                  encoding="utf-8")
@@ -342,21 +367,21 @@ def save_page(corpus_dir: Path, result: Dict) -> Optional[str]:
 
 class CrawlQueue:
     def __init__(self) -> None:
-        self._items: List[Tuple[int, str]] = []
+        self._items: List[Tuple[int, str, Optional[str]]] = []
         self._seen: Set[str] = set()
 
-    def push(self, url: str, priority: int) -> bool:
+    def push(self, url: str, priority: int, source_url: Optional[str] = None) -> bool:
         if url in self._seen:
             return False
         self._seen.add(url)
-        self._items.append((priority, url))
+        self._items.append((priority, url, source_url))
         self._items.sort(key=lambda x: x[0])
         return True
 
-    def pop(self) -> Optional[Tuple[int, str]]:
+    def pop(self) -> Optional[Tuple[int, str, Optional[str]]]:
         return self._items.pop(0) if self._items else None
 
-    def drain_all(self) -> List[Tuple[int, str]]:
+    def drain_all(self) -> List[Tuple[int, str, Optional[str]]]:
         items = list(self._items)
         self._items.clear()
         return items
@@ -420,14 +445,14 @@ async def crawl(domain: str, corpus_dir: Path, budget: BudgetTracker) -> Dict:
         while queue and len(crawled) < MAX_PAGES:
             # Hard ceiling check — halt immediately if over hard deadline
             if budget.over_hard():
-                for _pri, skip_url in queue.drain_all():
+                for _pri, skip_url, _src in queue.drain_all():
                     budget.record_skip(skip_url,
                                        "hard_deadline_exceeded", "crawl")
                 break
 
             # Budget gate — stop enqueueing when near soft deadline
             if budget.remaining_soft() < SOFT_MARGIN_S:
-                for _pri, skip_url in queue.drain_all():
+                for _pri, skip_url, _src in queue.drain_all():
                     budget.record_skip(skip_url,
                                        "soft_deadline_approaching", "crawl")
                 break
@@ -435,12 +460,12 @@ async def crawl(domain: str, corpus_dir: Path, budget: BudgetTracker) -> Dict:
             # Pop a batch (up to CONCURRENCY, but never exceed MAX_PAGES total)
             remaining_slots = MAX_PAGES - len(crawled)
             batch_limit = min(CONCURRENCY, remaining_slots)
-            batch: List[Tuple[int, str]] = []
+            batch: List[Tuple[int, str, Optional[str]]] = []
             while len(batch) < batch_limit and queue:
                 item = queue.pop()
                 if item is None:
                     break
-                pri, url = item
+                pri, url, src_url = item
                 # Robots check
                 if not is_url_allowed(url, all_rules):
                     budget.record_skip(url, "robots_disallow", "crawl")
@@ -450,17 +475,18 @@ async def crawl(domain: str, corpus_dir: Path, budget: BudgetTracker) -> Dict:
                 if pri >= PRI_TEMPLATE and tmpl in templates_crawled:
                     budget.record_skip(url, "template_already_crawled", "crawl")
                     continue
-                batch.append((pri, url))
+                batch.append((pri, url, src_url))
 
             if not batch:
                 break
 
             # Fetch concurrently
             results = await asyncio.gather(
-                *(fetch_page(u, client, sem) for _, u in batch)
+                *(fetch_page(u, client, sem) for _, u, _ in batch)
             )
 
-            for (pri, url), result in zip(batch, results):
+            for (pri, url, src_url), result in zip(batch, results):
+                result["source_url"] = src_url
                 tmpl = url_path_template(url)
                 slug = save_page(corpus_dir, result)
                 crawled.append({
@@ -470,6 +496,9 @@ async def crawl(domain: str, corpus_dir: Path, budget: BudgetTracker) -> Dict:
                     "error": result["error"],
                     "elapsed_s": result["elapsed_s"],
                     "slug": slug,
+                    "redirect_count": result.get("redirect_count", 0),
+                    "redirect_chain": result.get("redirect_chain", []),
+                    "source_url": src_url,
                 })
                 if slug:
                     templates_crawled.add(tmpl)
@@ -480,7 +509,7 @@ async def crawl(domain: str, corpus_dir: Path, budget: BudgetTracker) -> Dict:
                     for link in extract_nav_links(result["html"],
                                                   result["final_url"]):
                         if same_domain(link, origin_host):
-                            queue.push(link, PRI_NAV)
+                            queue.push(link, PRI_NAV, source_url=result["final_url"])
 
                 # Discover same-domain links from high-priority pages
                 if pri <= PRI_NAV and result["html"]:
@@ -491,7 +520,7 @@ async def crawl(domain: str, corpus_dir: Path, budget: BudgetTracker) -> Dict:
                         if n and same_domain(n, origin_host):
                             lt = url_path_template(n)
                             if lt not in templates_crawled:
-                                queue.push(n, PRI_TEMPLATE)
+                                queue.push(n, PRI_TEMPLATE, source_url=result["final_url"])
 
     pages_ok = [c for c in crawled if c["slug"]]
     return {

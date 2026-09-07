@@ -16,9 +16,18 @@ Full documentation will be added at packaging time (see `PROJECT_CONSTITUTION.md
 ## Quick start
 
 ```bash
-# Install dependencies
-pip install -r skills/site-acquisition/requirements.txt
+# Install dependencies across all skills
+pip install -r requirements.txt
 
-# Run an audit
-# (Detailed instructions in skills/audit-orchestrator/SKILL.md)
+# Install Playwright browser engine for headless DOM rendering
+playwright install chromium
+
+# Run the full audit pipeline
+python skills/audit-orchestrator/scripts/audit.py https://example.com
+
+# Run the test suite
+python skills/machine-readability-audit/tests/run_fixtures.py
+python skills/machine-readability-audit/tests/test_archetype_fixtures.py
+pytest skills/audit-orchestrator/tests/test_models.py
 ```
+

@@ -112,6 +112,7 @@ def _extract_title(html: str) -> str:
 
 def check_r4(corpus_dir: Path, manifest: Optional[Dict] = None) -> List[Dict]:
     """Run R4 on all pages in corpus_dir."""
+    FINDING_ID_COUNTER["R4"] = 0
     findings: List[Dict] = []
 
     for page_dir in sorted(corpus_dir.iterdir()):

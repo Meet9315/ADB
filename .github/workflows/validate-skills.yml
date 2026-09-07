@@ -20,8 +20,26 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
       - name: Run skill validator
         run: |
           python scripts/validate_skills.py \
             --skills-dir skills \
             --marketplace marketplace.json
+
+      - name: Run archetype benchmark suite
+        run: |
+          python skills/machine-readability-audit/tests/test_archetype_fixtures.py
+
+      - name: Run deterministic check fixture tests
+        run: |
+          python skills/machine-readability-audit/tests/run_fixtures.py
+
+      - name: Run orchestrator pydantic tests
+        run: |
+          pytest skills/audit-orchestrator/tests/test_models.py
+

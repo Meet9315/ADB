@@ -127,7 +127,7 @@ def _instantiate_recommendation(c: CandidateFinding, finding_id: str = "") -> Su
             ),
             code_snippet=(
                 "# Append to robots.txt:\n"
-                "Sitemap: https://example.com/sitemap.xml"
+                f"Sitemap: {c.page_url.rstrip('/')}/sitemap.xml" if c.page_url.startswith("http") else "# Append to robots.txt:\nSitemap: <base_url>/sitemap.xml"
             ),
             priority="high",
             linked_findings=linked_findings,

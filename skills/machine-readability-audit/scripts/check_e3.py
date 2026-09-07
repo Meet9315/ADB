@@ -4,7 +4,7 @@ check_e3.py — E3 Quotability gap check.
 
 Uses Prompt 4's archetype classifier to generate 5–8 canonical questions.
 Extracts a bounded, explicitly enumerated corpus of script-extracted passages
-from the crawled site.
+(30–250 words) from the crawled site.
 Tests whether any single passage self-containedly answers each canonical question.
 Flags questions lacking a quotable answer. Never reconstructs answers from domain knowledge.
 
@@ -27,21 +27,13 @@ sys.path.insert(0, str(_HERE))
 import archetype  # noqa: E402
 
 
-# ── Tiny-Site Suppressed Topics ───────────────────────────────────────────
-# Multi-page retail policy topics that are not actionable evidence gaps when
-# the acquisition manifest confirms a genuinely tiny site (< 8 pages).
-TINY_SITE_SUPPRESSED_TOPICS: Set[str] = {
-    "return_refund",
-    "accepted_payments",
-    "payment_methods",
-    "shipping_policy",
-    "catalog_offerings",
-    "customer_support",
-    "warranty_guarantee",
-}
-
-
-# ── Canonical Questions by Archetype ──────────────────────────────────────
+# ── Canonical Questions by Archetype & Applicability Rules ─────────────────
+#
+# Each canonical question declares its topic, keywords, factual indicator regexes,
+# and structured applicability constraints. E3 evaluates question applicability
+# strictly from observed corpus signals (e.g. cart/checkout presence, pricing pages,
+# minimum site depth, or explicit topic keywords in corpus text), rather than
+# relying on ad-hoc topic suppression lists.
 
 CANONICAL_QUESTIONS: Dict[str, List[Dict[str, Any]]] = {
     "ecommerce": [
@@ -50,36 +42,66 @@ CANONICAL_QUESTIONS: Dict[str, List[Dict[str, Any]]] = {
             "topic": "return_refund",
             "keywords": ["return", "refund", "exchange", "30-day", "guarantee", "reimbursement", "store credit"],
             "factual_indicators": [r"\d+\s*days?", r"within\s+\d+", r"full\s+refund", r"condition", r"receipt", r"original"],
+            "applicability": {
+                "min_pages": 8,
+                "required_signals": ["pages_with_cart_link"],
+                "corpus_keywords": ["return", "refund", "exchange", "store credit"],
+            },
         },
         {
             "question": "What payment methods are accepted for purchases?",
             "topic": "payment_methods",
             "keywords": ["payment", "visa", "mastercard", "amex", "paypal", "apple pay", "credit card", "debit card", "stripe"],
             "factual_indicators": [r"visa", r"mastercard", r"paypal", r"apple\s+pay", r"credit\s+card", r"accepted"],
+            "applicability": {
+                "min_pages": 8,
+                "required_signals": ["pages_with_cart_link"],
+                "corpus_keywords": ["payment", "visa", "mastercard", "paypal", "checkout", "credit card"],
+            },
         },
         {
             "question": "How long does standard shipping take and what does it cost?",
             "topic": "shipping_policy",
             "keywords": ["shipping", "delivery", "dispatch", "fedex", "ups", "usps", "transit", "business days"],
             "factual_indicators": [r"\d+[-–]\d+\s*(?:business\s+)?days?", r"free\s+shipping", r"\$\d+", r"flat\s+rate"],
+            "applicability": {
+                "min_pages": 8,
+                "required_signals": ["pages_with_cart_link"],
+                "corpus_keywords": ["shipping", "delivery", "dispatch", "fedex", "ups", "usps"],
+            },
         },
         {
             "question": "What specific products or item categories does this store sell?",
             "topic": "catalog_offerings",
             "keywords": ["collection", "catalog", "shop", "products", "accessories", "items", "apparel", "gear"],
             "factual_indicators": [r"(?:we\s+sell|featuring|collection\s+of|shop\s+our|selection\s+of)", r"catalog"],
+            "applicability": {
+                "min_pages": 8,
+                "required_signals": ["pages_with_cart_link"],
+                "corpus_keywords": ["catalog", "collection", "shop our", "our products", "apparel"],
+            },
         },
         {
             "question": "How can a customer contact support for order inquiries or issues?",
             "topic": "customer_support",
             "keywords": ["support", "help", "contact", "customer service", "email", "phone", "chat", "inquiries"],
             "factual_indicators": [r"[\w.-]+@[\w.-]+\.\w+", r"\b\d{3}[-.]?\d{3}[-.]?\d{4}\b", r"hours", r"submit\s+a\s+ticket"],
+            "applicability": {
+                "min_pages": 8,
+                "required_signals": ["pages_with_cart_link"],
+                "corpus_keywords": ["customer service", "customer support", "help center", "submit a ticket", "support@"],
+            },
         },
         {
             "question": "Is there a product warranty, guarantee, or replacement policy?",
             "topic": "warranty_guarantee",
             "keywords": ["warranty", "guarantee", "lifetime", "manufacturer", "repair", "defect", "coverage"],
-            "factual_indicators": [r"\d+\s*year", r"lifetime\s+warranty", r"manufacturer", r"repair", r"defective"],
+            "factual_indicators": [r"\d+\s*years?", r"\d+\s*days?", r"lifetime\s+warranty", r"money[- ]back\s+guarantee", r"guarantee", r"manufacturer", r"repair", r"defective"],
+            "applicability": {
+                "min_pages": 8,
+                "required_signals": ["pages_with_cart_link"],
+                "corpus_keywords": ["warranty", "guarantee", "repair", "defect", "coverage"],
+            },
         },
     ],
     "saas": [
@@ -88,36 +110,64 @@ CANONICAL_QUESTIONS: Dict[str, List[Dict[str, Any]]] = {
             "topic": "product_overview",
             "keywords": ["platform", "software", "solution", "automate", "workflow", "manage", "build", "api", "tool"],
             "factual_indicators": [r"(?:enables|helps|allows|built\s+for|designed\s+to)\s+\w+", r"platform\s+for"],
+            "applicability": {
+                "always_applicable": True,
+            },
         },
         {
             "question": "What are the specific pricing plans, tier names, and recurring costs?",
             "topic": "pricing_tiers",
             "keywords": ["pricing", "plan", "monthly", "annual", "per user", "starter", "pro", "enterprise", "/mo"],
             "factual_indicators": [r"[$€£]\d+(?:/mo|/user|/month)?", r"\b(?:starter|free|pro|business|enterprise)\b.*[$€£]\d+"],
+            "applicability": {
+                "min_pages": 8,
+                "required_signals": ["has_pricing_page", "pages_with_price"],
+                "corpus_keywords": ["pricing", "plan", "monthly", "annual", "subscription", "/mo"],
+            },
         },
         {
             "question": "Is there a free trial or free tier, and does it require a credit card?",
             "topic": "free_trial",
             "keywords": ["free trial", "free tier", "no credit card", "start free", "14-day", "30-day", "freemium"],
             "factual_indicators": [r"\d+[- ]day\s+free\s+trial", r"no\s+credit\s+card\s+required", r"free\s+forever"],
+            "applicability": {
+                "min_pages": 8,
+                "required_signals": ["pages_with_demo_cta"],
+                "corpus_keywords": ["free trial", "free tier", "start free", "freemium", "try free"],
+            },
         },
         {
             "question": "What third-party platforms, APIs, or integrations are supported?",
             "topic": "integrations_api",
             "keywords": ["integrations", "api", "webhook", "zapier", "slack", "github", "export", "connect"],
             "factual_indicators": [r"rest\s+api", r"webhooks?", r"integrate(?:s|d)?\s+with", r"sdk"],
+            "applicability": {
+                "min_pages": 8,
+                "required_signals": ["pages_with_saas_features"],
+                "corpus_keywords": ["integration", "api", "webhook", "zapier", "slack", "sdk"],
+            },
         },
         {
             "question": "What are the supported deployment platforms, operating systems, or browsers?",
             "topic": "platform_support",
             "keywords": ["supported", "cloud", "on-premise", "docker", "mac", "windows", "linux", "ios", "android", "browser"],
             "factual_indicators": [r"(?:available\s+on|supports?|compatible\s+with)\s+(?:windows|mac|linux|ios|android|chrome)"],
+            "applicability": {
+                "min_pages": 8,
+                "required_signals": ["pages_with_saas_features"],
+                "corpus_keywords": ["supported", "docker", "mac", "windows", "linux", "cloud", "on-premise"],
+            },
         },
         {
             "question": "How is customer data secured, encrypted, and kept compliant (e.g. SOC2, GDPR)?",
             "topic": "security_compliance",
             "keywords": ["security", "soc2", "soc 2", "gdpr", "hipaa", "encryption", "aes-256", "tls", "compliance"],
             "factual_indicators": [r"soc\s*2", r"gdpr", r"hipaa", r"iso\s*27001", r"end-to-end\s+encryption", r"aes[- ]256"],
+            "applicability": {
+                "min_pages": 8,
+                "required_signals": ["pages_with_saas_features"],
+                "corpus_keywords": ["security", "soc2", "gdpr", "hipaa", "encryption", "compliance", "tls"],
+            },
         },
     ],
     "docs": [
@@ -126,30 +176,51 @@ CANONICAL_QUESTIONS: Dict[str, List[Dict[str, Any]]] = {
             "topic": "installation",
             "keywords": ["install", "npm", "pip", "yarn", "cargo", "pnpm", "gem", "brew", "download", "cdn"],
             "factual_indicators": [r"(?:npm\s+i|pip\s+install|cargo\s+add|yarn\s+add|gem\s+install|brew\s+install)"],
+            "applicability": {
+                "always_applicable": True,
+            },
         },
         {
             "question": "What authentication credentials, API keys, or tokens are required?",
             "topic": "authentication",
             "keywords": ["authentication", "api key", "token", "bearer", "oauth", "credentials", "header"],
             "factual_indicators": [r"authorization:\s*bearer", r"api[-_ ]key", r"oauth", r"access[-_ ]token"],
+            "applicability": {
+                "min_pages": 8,
+                "required_signals": ["pages_with_code_blocks"],
+                "corpus_keywords": ["auth", "api key", "token", "bearer", "oauth", "credentials"],
+            },
         },
         {
             "question": "What runtime, language, or OS versions are required as prerequisites?",
             "topic": "prerequisites",
             "keywords": ["prerequisites", "requirements", "python", "node", "java", "go", "version", ">="],
             "factual_indicators": [r"(?:python|node|go|ruby|java)\s*(?:>=|>|\^)?\s*\d+", r"requires\s+version"],
+            "applicability": {
+                "always_applicable": True,
+            },
         },
         {
             "question": "Where is the core API reference documentation or entry point?",
             "topic": "api_reference",
             "keywords": ["reference", "api", "endpoints", "classes", "methods", "parameters", "schemas"],
             "factual_indicators": [r"(?:api\s+reference|endpoints?|method\s+signature|parameters:)"],
+            "applicability": {
+                "min_pages": 8,
+                "required_signals": ["docs_path_pages"],
+                "corpus_keywords": ["reference", "endpoints", "api", "methods", "parameters"],
+            },
         },
         {
             "question": "How do users report bugs, submit PRs, or contribute to this project?",
             "topic": "contributing",
             "keywords": ["contributing", "github", "pull request", "issue", "bug report", "contribute", "license"],
             "factual_indicators": [r"(?:github\.com|open\s+an\s+issue|submit\s+a\s+pull\s+request|contributing\.md)"],
+            "applicability": {
+                "min_pages": 8,
+                "required_signals": ["docs_path_pages"],
+                "corpus_keywords": ["contributing", "github", "pull request", "issue", "bug report"],
+            },
         },
     ],
     "local_business": [
@@ -158,30 +229,49 @@ CANONICAL_QUESTIONS: Dict[str, List[Dict[str, Any]]] = {
             "topic": "physical_location",
             "keywords": ["address", "located", "suite", "street", "avenue", "road", "city", "state", "zip"],
             "factual_indicators": [r"\d+\s+[A-Za-z0-9\s,.-]+(?:st|ave|rd|blvd|dr|lane|way|suite)\b", r"located\s+at"],
+            "applicability": {
+                "always_applicable": True,
+            },
         },
         {
             "question": "What are the weekly operating hours for the business?",
             "topic": "business_hours",
             "keywords": ["hours", "open", "monday", "friday", "saturday", "sunday", "am", "pm", "closed"],
             "factual_indicators": [r"(?:mon|tue|wed|thu|fri|sat|sun)[-–a-z\s]*:\s*\d{1,2}(?::\d{2})?\s*(?:am|pm)", r"open\s+daily"],
+            "applicability": {
+                "min_pages": 8,
+                "required_signals": ["pages_with_hours"],
+                "corpus_keywords": ["hours", "open", "monday", "friday", "closed", "daily"],
+            },
         },
         {
             "question": "How can customers schedule an appointment, consultation, or reservation?",
             "topic": "scheduling_booking",
             "keywords": ["appointment", "booking", "reserve", "schedule", "consultation", "call to book"],
             "factual_indicators": [r"(?:book\s+an\s+appointment|schedule\s+a\s+consultation|make\s+a\s+reservation)"],
+            "applicability": {
+                "min_pages": 8,
+                "required_signals": ["pages_with_phone"],
+                "corpus_keywords": ["appointment", "booking", "reserve", "schedule", "consultation"],
+            },
         },
         {
             "question": "What specific primary services, treatments, or specialties are offered?",
             "topic": "services_offered",
             "keywords": ["services", "specialties", "offer", "treatments", "repairs", "consulting", "menu"],
             "factual_indicators": [r"(?:services\s+include|specializing\s+in|our\s+treatments|offerings)"],
+            "applicability": {
+                "always_applicable": True,
+            },
         },
         {
             "question": "What direct telephone number or email is used to contact the business?",
             "topic": "direct_contact",
             "keywords": ["phone", "call", "tel", "email", "reach us", "contact"],
             "factual_indicators": [r"\b\d{3}[-.]?\d{3}[-.]?\d{4}\b", r"[\w.-]+@[\w.-]+\.\w+"],
+            "applicability": {
+                "always_applicable": True,
+            },
         },
     ],
     "content": [
@@ -190,30 +280,50 @@ CANONICAL_QUESTIONS: Dict[str, List[Dict[str, Any]]] = {
             "topic": "editorial_scope",
             "keywords": ["topics", "about", "covering", "articles", "focus", "insights", "analysis"],
             "factual_indicators": [r"(?:focuses\s+on|covers|dedicated\s+to|reporting\s+on)"],
+            "applicability": {
+                "always_applicable": True,
+            },
         },
         {
             "question": "Who are the primary writers, editors, or contributors to the site?",
             "topic": "authorship",
             "keywords": ["author", "writer", "editor", "by", "team", "contributor", "bio"],
             "factual_indicators": [r"(?:written\s+by|editor-in-chief|staff\s+writer|contributing\s+editor)"],
+            "applicability": {
+                "min_pages": 8,
+                "required_signals": ["pages_with_byline"],
+                "corpus_keywords": ["author", "writer", "editor", "byline", "contributors"],
+            },
         },
         {
             "question": "How can readers subscribe to new article alerts, newsletters, or RSS?",
             "topic": "subscription_newsletter",
             "keywords": ["subscribe", "newsletter", "email", "rss", "feed", "updates", "weekly"],
             "factual_indicators": [r"(?:subscribe\s+to|join\s+our\s+newsletter|get\s+updates|rss\s+feed)"],
+            "applicability": {
+                "min_pages": 8,
+                "corpus_keywords": ["subscribe", "newsletter", "rss", "feed", "updates"],
+            },
         },
         {
             "question": "What is the publication's editorial standard, review, or corrections policy?",
             "topic": "editorial_standards",
             "keywords": ["editorial", "corrections", "policy", "ethics", "fact-check", "standards"],
             "factual_indicators": [r"(?:editorial\s+policy|fact-checking|corrections?\s+policy|code\s+of\s+ethics)"],
+            "applicability": {
+                "min_pages": 8,
+                "corpus_keywords": ["editorial", "corrections", "policy", "ethics", "fact-check"],
+            },
         },
         {
             "question": "How often is new content, analysis, or journalism published?",
             "topic": "publishing_cadence",
             "keywords": ["daily", "weekly", "monthly", "published", "cadence", "edition", "issues"],
             "factual_indicators": [r"(?:published\s+daily|weekly\s+edition|monthly\s+issue|every\s+\w+)"],
+            "applicability": {
+                "min_pages": 8,
+                "corpus_keywords": ["daily", "weekly", "monthly", "edition", "cadence"],
+            },
         },
     ],
     "news": [
@@ -222,30 +332,49 @@ CANONICAL_QUESTIONS: Dict[str, List[Dict[str, Any]]] = {
             "topic": "news_mission",
             "keywords": ["reporting", "investigative", "news", "beat", "journalism", "coverage", "global"],
             "factual_indicators": [r"(?:investigative\s+reporting|independent\s+journalism|covering|news\s+from)"],
+            "applicability": {
+                "always_applicable": True,
+            },
         },
         {
             "question": "What digital subscription or membership plans and rates are available?",
             "topic": "subscription_rates",
             "keywords": ["subscription", "membership", "supporter", "digital access", "$/month", "annual"],
             "factual_indicators": [r"[$€£]\d+(?:/month|/year)?", r"subscribe\s+for\s+[$€£]"],
+            "applicability": {
+                "min_pages": 8,
+                "required_signals": ["pages_with_price"],
+                "corpus_keywords": ["subscription", "membership", "digital access", "$/month"],
+            },
         },
         {
             "question": "How can sources or whistleblowers securely submit confidential news tips?",
             "topic": "confidential_tips",
             "keywords": ["tips", "whistleblower", "secure", "signal", "securedrop", "confidential", "leak"],
             "factual_indicators": [r"(?:securedrop|signal|confidential\s+tips|send\s+a\s+tip)"],
+            "applicability": {
+                "min_pages": 8,
+                "corpus_keywords": ["tips", "whistleblower", "signal", "securedrop", "confidential"],
+            },
         },
         {
             "question": "What is the formal corrections procedure for reporting inaccuracies?",
             "topic": "corrections_procedure",
             "keywords": ["corrections", "clarifications", "report an error", "accuracy", "inaccuracy"],
             "factual_indicators": [r"(?:corrections\s+and\s+clarifications|report\s+a\s+correction|standards\s+editor)"],
+            "applicability": {
+                "min_pages": 8,
+                "corpus_keywords": ["corrections", "clarifications", "report an error", "inaccuracy"],
+            },
         },
         {
             "question": "Who owns, funds, or maintains editorial oversight of this news outlet?",
             "topic": "ownership_funding",
             "keywords": ["owned", "publisher", "trust", "board", "foundation", "independent", "subsidiary"],
             "factual_indicators": [r"(?:owned\s+by|published\s+by|the\s+trust|board\s+of\s+directors)"],
+            "applicability": {
+                "always_applicable": True,
+            },
         },
     ],
     "portfolio": [
@@ -254,30 +383,47 @@ CANONICAL_QUESTIONS: Dict[str, List[Dict[str, Any]]] = {
             "topic": "creator_identity",
             "keywords": ["designer", "developer", "photographer", "artist", "architect", "engineer", "about me"],
             "factual_indicators": [r"(?:i\s+am\s+a|specializing\s+in|creative\s+director|freelance)"],
+            "applicability": {
+                "always_applicable": True,
+            },
         },
         {
             "question": "What specific client projects, case studies, or notable works are featured?",
             "topic": "featured_projects",
             "keywords": ["project", "case study", "client", "work", "campaign", "built", "designed"],
             "factual_indicators": [r"(?:case\s+study|client:|project\s+for|featured\s+work)"],
+            "applicability": {
+                "always_applicable": True,
+            },
         },
         {
             "question": "What specific software, tech stack, or creative tools does the creator specialize in?",
             "topic": "skills_tools",
             "keywords": ["skills", "stack", "figma", "react", "python", "blender", "tools", "technologies"],
             "factual_indicators": [r"(?:tools\s+used|tech\s+stack|proficient\s+in|technologies)"],
+            "applicability": {
+                "min_pages": 8,
+                "corpus_keywords": ["stack", "figma", "react", "python", "tools", "technologies"],
+            },
         },
         {
             "question": "How can prospective clients or collaborators inquire about new engagements?",
             "topic": "inquiry_contact",
             "keywords": ["contact", "inquire", "email", "hire", "hello", "get in touch", "collaborate"],
             "factual_indicators": [r"[\w.-]+@[\w.-]+\.\w+", r"(?:get\s+in\s+touch|available\s+for\s+hire)"],
+            "applicability": {
+                "always_applicable": True,
+            },
         },
         {
             "question": "What is the creator's current availability for freelance, contract, or full-time roles?",
             "topic": "availability",
             "keywords": ["available", "booking", "q1", "q2", "q3", "q4", "freelance", "full-time", "accepting"],
             "factual_indicators": [r"(?:available\s+for|accepting\s+new\s+clients|booking\s+for)"],
+            "applicability": {
+                "min_pages": 8,
+                "corpus_keywords": ["available", "booking", "freelance", "full-time", "accepting"],
+            },
         },
     ],
     "corporate": [
@@ -286,36 +432,35 @@ CANONICAL_QUESTIONS: Dict[str, List[Dict[str, Any]]] = {
             "topic": "commercial_solutions",
             "keywords": ["solutions", "enterprise", "industry", "commercial", "global", "services", "capabilities"],
             "factual_indicators": [r"(?:delivers|provides|leader\s+in|enterprise\s+solutions)"],
+            "applicability": {
+                "always_applicable": True,
+            },
         },
         {
             "question": "Who are the key executive leaders or members of the board of directors?",
             "topic": "leadership_board",
             "keywords": ["ceo", "executive", "leadership", "board of directors", "founder", "officer", "president"],
             "factual_indicators": [r"(?:chief\s+executive\s+officer|ceo|president|board\s+of\s+directors)"],
+            "applicability": {
+                "min_pages": 8,
+                "corpus_keywords": ["ceo", "executive", "board", "leadership", "officer"],
+            },
         },
         {
             "question": "Where is the global corporate headquarters and primary regional offices located?",
             "topic": "corporate_headquarters",
             "keywords": ["headquarters", "headquartered", "offices", "global", "locations", "corporate office"],
             "factual_indicators": [r"(?:headquartered\s+in|corporate\s+headquarters|global\s+offices)"],
-        },
-        {
-            "question": "How can investors, shareholders, or media press representatives contact the company?",
-            "topic": "investor_press_contact",
-            "keywords": ["investor relations", "press", "media", "shareholders", "pr", "newsroom", "inquiries"],
-            "factual_indicators": [r"(?:investor\s+relations|press\s+contact|media\s+inquiries|ir@|press@)"],
-        },
-        {
-            "question": "What is the company's formal ESG, sustainability, or governance commitment?",
-            "topic": "esg_governance",
-            "keywords": ["sustainability", "esg", "governance", "carbon", "diversity", "environmental", "responsibility"],
-            "factual_indicators": [r"(?:sustainability\s+report|esg\s+report|net\s+zero|carbon\s+neutral)"],
+            "applicability": {
+                "always_applicable": True,
+            },
         },
     ],
+    "unknown": [],
 }
 
 
-# ── Passage Extraction ───────────────────────────────────────────────────
+# ── Passage representation ───────────────────────────────────────────────
 
 @dataclass
 class Passage:
@@ -325,9 +470,50 @@ class Passage:
     word_count: int
 
 
-def _extract_passages_from_corpus(corpus_dir: Path, max_passages: int = 60) -> List[Passage]:
+def _is_question_applicable(
+    q_spec: Dict[str, Any],
+    signals: Dict[str, Any],
+    corpus_text_lower: str,
+    is_tiny_site: bool,
+    total_pages: int,
+) -> bool:
     """
-    Extract a bounded, explicitly enumerated corpus of coherent passages (40-200 words)
+    Reason whether a canonical question is applicable to this site based on
+    observed corpus properties and signals, rather than ad-hoc topic suppression.
+    """
+    app_rules = q_spec.get("applicability", {})
+    if app_rules.get("always_applicable", False):
+        return True
+
+    min_pages = app_rules.get("min_pages", 8)
+    if not is_tiny_site and total_pages >= min_pages:
+        return True
+
+    # Check prerequisite signals from archetype classifier
+    req_signals = app_rules.get("required_signals", [])
+    for sig in req_signals:
+        val = signals.get(sig)
+        if isinstance(val, bool) and val:
+            return True
+        elif isinstance(val, (int, float)) and val > 0:
+            return True
+
+    # Check if corpus text contains explicit mentions of the topic keywords
+    corpus_kw = app_rules.get("corpus_keywords", q_spec.get("keywords", []))
+    for kw in corpus_kw:
+        if kw.lower() in corpus_text_lower:
+            return True
+
+    return False
+
+
+def _extract_passages_from_corpus(
+    corpus_dir: Path,
+    max_passages: int = 60,
+    manifest_data: Optional[Dict[str, Any]] = None,
+) -> List[Passage]:
+    """
+    Extract a bounded, explicitly enumerated corpus of coherent passages (30-250 words)
     from crawled page text files.
     """
     passages: List[Passage] = []
@@ -343,13 +529,23 @@ def _extract_passages_from_corpus(corpus_dir: Path, max_passages: int = 60) -> L
         text_path = pdir / "text.txt"
         raw_path = pdir / "raw.html"
 
-        page_url = f"https://example.com/{pdir.name}"
+        page_url = ""
         if meta_path.exists():
             try:
                 meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                page_url = meta.get("url", page_url)
+                page_url = meta.get("final_url") or meta.get("url") or ""
             except Exception:
                 pass
+
+        if not page_url and manifest_data:
+            for cp in manifest_data.get("crawled_pages", []):
+                if cp.get("slug") == pdir.name:
+                    page_url = cp.get("final_url") or cp.get("url") or ""
+                    break
+
+        if not page_url:
+            # Skip unidentifiable page without URL; never invent example.com fallback
+            continue
 
         text = ""
         if text_path.exists():
@@ -407,7 +603,6 @@ def _evaluate_question_quotability(
     Test whether at least one passage self-containedly answers the canonical question.
     Returns: (is_answered, best_candidate_passage, failure_reason)
     """
-    question = question_spec["question"]
     keywords = question_spec["keywords"]
     factual_indicators = [re.compile(p, re.IGNORECASE) for p in question_spec.get("factual_indicators", [])]
 
@@ -415,11 +610,9 @@ def _evaluate_question_quotability(
 
     for p in passages:
         p_lower = p.text.lower()
-        # Score relevance based on keyword matches
         matches = sum(1 for kw in keywords if kw.lower() in p_lower)
         if matches >= 1:
             score = float(matches)
-            # Bonus if factual indicators match
             facts_matched = sum(1 for pattern in factual_indicators if pattern.search(p.text))
             score += facts_matched * 2.5
             candidates.append((score, p))
@@ -427,14 +620,11 @@ def _evaluate_question_quotability(
     if not candidates:
         return False, None, f"No candidate passage in the bounded corpus addressed '{question_spec['topic']}'."
 
-    # Sort best candidates first
     candidates.sort(key=lambda x: x[0], reverse=True)
     best_score, best_p = candidates[0]
 
-    # Check if best candidate self-containedly answers with concrete facts
     has_factual = any(pattern.search(best_p.text) for pattern in factual_indicators)
 
-    # Negative check for evasive marketing phrases (e.g. "contact sales", "learn more", "coming soon")
     is_evasive = bool(re.search(
         r'(?:contact\s+(?:sales|us|our\s+team)\s+for\s+(?:pricing|details)|pricing\s+available\s+upon\s+request|coming\s+soon|learn\s+more\s+about\s+our)',
         best_p.text, flags=re.IGNORECASE,
@@ -449,7 +639,6 @@ def _evaluate_question_quotability(
             f"('{best_p.text[:90]}...') without factual details."
         )
 
-    # Found keywords but lacks concrete factual answer indicators
     return False, best_p, (
         f"Passage discusses related vocabulary but lacks self-contained factual specifics "
         f"(matched keywords: {best_score:.1f}, but lacked required factual attributes)."
@@ -469,15 +658,15 @@ def run_check_e3(
     findings: List[Dict[str, Any]] = []
 
     # 1. Determine site archetype using archetype classifier
-    # Try finding manifest file
     manifest_path = corpus_dir / "crawl_manifest.json"
     if not manifest_path.exists() and corpus_dir.parent:
         potential = corpus_dir.parent / "crawl_manifest.json"
         if potential.exists():
             manifest_path = potential
 
-    primary_archetype = "saas"  # sensible default
+    primary_archetype = "unknown"
     is_tiny_site = False
+    signals: Dict[str, Any] = {}
 
     manifest_data: Dict[str, Any] = {}
     if isinstance(manifest, (str, Path)):
@@ -511,10 +700,10 @@ def run_check_e3(
                 primary_archetype = archs[0]
             if "is_tiny_site" in res:
                 is_tiny_site = is_tiny_site or bool(res["is_tiny_site"])
+            signals = res.get("signals", {})
         except Exception:
             pass
     elif manifest_data:
-        # Construct temporary check
         try:
             sig = archetype.extract_signals(manifest_data, corpus_dir)
             scores = archetype.score_archetypes(sig)
@@ -522,36 +711,59 @@ def run_check_e3(
             if archs and archs[0] != "unknown":
                 primary_archetype = archs[0]
             is_tiny_site = is_tiny_site or bool(sig.get("total_crawled_pages", 0) < 8 or manifest_data.get("is_tiny_site", False))
+            signals = sig
         except Exception:
             pass
 
-    # 2. Select 5-8 canonical questions for this archetype
-    questions = CANONICAL_QUESTIONS.get(primary_archetype, CANONICAL_QUESTIONS["saas"])
+    # 2. Select canonical questions for this archetype (or empty if unknown)
+    questions = CANONICAL_QUESTIONS.get(primary_archetype, [])
+    if not questions:
+        return findings
 
     # 3. Extract bounded corpus of script-extracted passages
-    passages = _extract_passages_from_corpus(corpus_dir, max_passages=60)
+    passages = _extract_passages_from_corpus(corpus_dir, max_passages=60, manifest_data=manifest_data)
     if not passages:
         return findings
 
+    # Collect visible text across all crawled pages for comprehensive topic relevance
+    corpus_texts: List[str] = []
+    page_dirs = [d for d in corpus_dir.iterdir() if d.is_dir() and (d / "raw.html").exists()]
+    if not page_dirs:
+        for sub in corpus_dir.glob("*/raw.html"):
+            page_dirs.append(sub.parent)
+
+    for pdir in page_dirs:
+        t_file = pdir / "text.txt"
+        r_file = pdir / "raw.html"
+        if t_file.exists():
+            corpus_texts.append(t_file.read_text(encoding="utf-8", errors="replace"))
+        elif r_file.exists():
+            try:
+                from check_d1 import _extract_visible_text
+                corpus_texts.append(_extract_visible_text(r_file.read_text(encoding="utf-8", errors="replace")))
+            except Exception:
+                pass
+
+    corpus_text_lower = (" ".join(corpus_texts) + " " + " ".join(p.text for p in passages)).lower()
+    total_pages = signals.get("total_crawled_pages", len(passages))
+
     finding_idx = 1
     for q_spec in questions:
-        # Tiny-site guard:
-        # Multi-page policy questions are not actionable evidence gaps when the
-        # acquisition manifest confirms a genuinely tiny site. Do not infer that
-        # absence of these pages represents an E3 failure.
-        if is_tiny_site and q_spec.get("topic") in TINY_SITE_SUPPRESSED_TOPICS:
+        # Evaluate applicability from corpus properties & signals
+        if not _is_question_applicable(q_spec, signals, corpus_text_lower, is_tiny_site, total_pages):
             continue
 
         q_text = q_spec["question"]
         answered, best_passage, failure_reason = _evaluate_question_quotability(q_spec, passages)
 
         if not answered:
-            # Quotability gap finding!
-            page_url = best_passage.url if best_passage else (passages[0].url if passages else "https://example.com")
+            page_url = best_passage.url if best_passage else (passages[0].url if passages else "")
+            if not page_url:
+                continue
+
             passage_text = best_passage.text if best_passage else None
             passage_id = best_passage.passage_id if best_passage else None
 
-            # Pricing/return policy gaps have higher impact
             is_high_impact = q_spec["topic"] in ("pricing_tiers", "return_refund", "business_hours", "installation")
             severity = "high" if is_high_impact else "medium"
 
@@ -580,7 +792,7 @@ def run_check_e3(
                 ),
                 "false_positive_guard": (
                     f"Evaluated an explicitly enumerated corpus of {len(passages)} bounded script-extracted passages "
-                    f"(40-250 words) from visible text. Never reconstructed answers from external or brand knowledge. "
+                    f"(30-250 words) from visible text. Never reconstructed answers from external or brand knowledge. "
                     f"Evaluated best candidate against required factual indicators."
                 ),
                 "verification_method": (
@@ -599,22 +811,10 @@ def main() -> None:
     parser.add_argument("--manifest", help="Optional path to crawl_manifest.json", default=None)
     args = parser.parse_args()
 
-    corpus_dir = Path(args.corpus_dir)
-    if not corpus_dir.exists():
-        print(f"Error: corpus directory not found: {corpus_dir}", file=sys.stderr)
-        sys.exit(1)
-
-    manifest_data = None
-    if args.manifest:
-        mpath = Path(args.manifest)
-        if mpath.exists():
-            try:
-                manifest_data = json.loads(mpath.read_text(encoding="utf-8"))
-            except Exception:
-                pass
-
-    findings = run_check_e3(corpus_dir, manifest_data)
-    print(json.dumps(findings, indent=2))
+    corpus_path = Path(args.corpus_dir)
+    manifest_arg = Path(args.manifest) if args.manifest else None
+    results = run_check_e3(corpus_path, manifest=manifest_arg)
+    print(json.dumps(results, indent=2))
 
 
 if __name__ == "__main__":

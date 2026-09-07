@@ -24,7 +24,7 @@ a corresponding finding already flagged an issue for that topic.
     "@type": "MerchantReturnPolicy",
     "applicableCountry": "US",
     "returnPolicyCategory": "https://schema.org/MerchantReturnFiniteReturnWindow",
-    "merchantReturnDays": 30,
+    "merchantReturnDays": "<actual_return_days_e.g._30>",
     "returnMethod": "https://schema.org/ReturnByMail",
     "returnFees": "https://schema.org/FreeReturn"
   }
@@ -42,10 +42,10 @@ a corresponding finding already flagged an issue for that topic.
   ```json
   {
     "@type": "OfferShippingDetails",
-    "shippingRate": { "@type": "MonetaryAmount", "value": "0.00", "currency": "USD" },
+    "shippingRate": { "@type": "MonetaryAmount", "value": "<shipping_rate>", "currency": "<currency_code>" },
     "deliveryTime": {
       "@type": "ShippingDeliveryTime",
-      "transitTime": { "@type": "QuantitativeValue", "minValue": 1, "maxValue": 3, "unitCode": "d" }
+      "transitTime": { "@type": "QuantitativeValue", "minValue": "<min_days>", "maxValue": "<max_days>", "unitCode": "d" }
     }
   }
   ```
@@ -65,12 +65,12 @@ a corresponding finding already flagged an issue for that topic.
 - **Priority**: `medium`
 - **Code Snippet**:
   ```markdown
-  # Title: Acme Cloud API
-  > Developer-friendly cloud orchestration and telemetry platform.
+  # Title: <Product Name> API
+  > <Concise description of product value proposition and capabilities.>
 
   ## Documentation
-  - [API Quickstart](https://example.com/docs/quickstart): 5-minute setup guide
-  - [CLI Reference](https://example.com/docs/cli): Command-line tools
+  - [API Quickstart](/docs/quickstart): 5-minute setup guide
+  - [CLI Reference](/docs/cli): Command-line tools
   ```
 
 ### `saas_software_application_schema`
@@ -86,10 +86,10 @@ a corresponding finding already flagged an issue for that topic.
   {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
-    "name": "Acme SaaS",
+    "name": "<Product Name>",
     "applicationCategory": "BusinessApplication",
     "operatingSystem": "All",
-    "offers": { "@type": "Offer", "price": "29.00", "priceCurrency": "USD" }
+    "offers": { "@type": "Offer", "price": "<tier_price>", "priceCurrency": "<currency_code>" }
   }
   ```
 
@@ -108,8 +108,8 @@ a corresponding finding already flagged an issue for that topic.
 - **Code Snippet**:
   ```markdown
   # Docs Index for LLMs
-  - [Installation Guide](https://example.com/docs/install.md): Core setup
-  - [API Reference](https://example.com/docs/api.md): Full endpoints
+  - [Installation Guide](/docs/install.md): Core setup
+  - [API Reference](/docs/api.md): Full endpoints
   ```
 
 ### `docs_copyable_code_blocks`
@@ -122,7 +122,7 @@ a corresponding finding already flagged an issue for that topic.
 - **Priority**: `low`
 - **Code Snippet**:
   ```html
-  <pre><code class="language-bash">npm install acme-sdk</code></pre>
+  <pre><code class="language-bash">npm install <package-name></code></pre>
   ```
 
 ---
@@ -141,9 +141,9 @@ a corresponding finding already flagged an issue for that topic.
   ```json
   {
     "@type": "Person",
-    "name": "Jane Doe",
+    "name": "<author_name>",
     "jobTitle": "Investigative Reporter",
-    "sameAs": ["https://twitter.com/janedoe", "https://muckrack.com/janedoe"]
+    "sameAs": ["https://twitter.com/<handle>", "https://muckrack.com/<handle>"]
   }
   ```
 
@@ -164,7 +164,7 @@ a corresponding finding already flagged an issue for that topic.
   {
     "@context": "https://schema.org",
     "@type": "LocalBusiness",
-    "geo": { "@type": "GeoCoordinates", "latitude": 37.7749, "longitude": -122.4194 },
+    "geo": { "@type": "GeoCoordinates", "latitude": "<business_latitude>", "longitude": "<business_longitude>" },
     "openingHoursSpecification": [{
       "@type": "OpeningHoursSpecification",
       "dayOfWeek": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
@@ -191,12 +191,12 @@ a corresponding finding already flagged an issue for that topic.
   {
     "@context": "https://schema.org",
     "@type": "Corporation",
-    "name": "Acme Global Inc.",
-    "legalName": "Acme Global Corporation",
+    "name": "<company_name>",
+    "legalName": "<official_legal_entity_name>",
     "contactPoint": {
       "@type": "ContactPoint",
       "contactType": "investor relations",
-      "email": "ir@example.com"
+      "email": "<investor_relations_email>"
     }
   }
   ```

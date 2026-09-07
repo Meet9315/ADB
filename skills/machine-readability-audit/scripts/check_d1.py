@@ -190,7 +190,14 @@ def run_check_d1(
             except Exception:
                 pass
 
-        page_url = meta.get("url", f"https://example.com/{pdir.name}")
+        page_url = meta.get("final_url") or meta.get("url")
+        if not page_url and manifest:
+            for cp in manifest.get("crawled_pages", []):
+                if cp.get("slug") == pdir.name:
+                    page_url = cp.get("final_url") or cp.get("url")
+                    break
+        if not page_url:
+            continue
         raw_html = raw_path.read_text(encoding="utf-8", errors="replace")
 
         # Primary Path: rendered.html exists

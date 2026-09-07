@@ -266,27 +266,12 @@ class FinalReport(BaseModel):
                 f"Sum of by_root_cause ({root_cause_sum}) does not match findings count ({len(self.findings)})"
             )
 
-        # 3. Auto-populate recommendations from findings if omitted
-        if not self.recommendations and self.findings:
-            recs_map: Dict[Any, SuggestedAction] = {}
-            for f in self.findings:
-                act = f.suggested_action
-                key = (act.title, act.code_snippet)
-                if key in recs_map:
-                    for fid in act.linked_findings:
-                        if fid not in recs_map[key].linked_findings:
-                            recs_map[key].linked_findings.append(fid)
-                else:
-                    recs_map[key] = SuggestedAction(
-                        id=f"REC-{len(recs_map) + 1:03d}",
-                        title=act.title,
-                        description=act.description,
-                        code_snippet=act.code_snippet,
-                        priority=act.priority,
-                        linked_findings=list(act.linked_findings),
-                        is_proactive=False,
-                    )
-            self.recommendations = list(recs_map.values())
+        # 3. Reject reports with findings but missing recommendations (no silent repair)
+        if self.findings and not self.recommendations:
+            raise ValueError(
+                f"Report contains {len(self.findings)} findings but 'recommendations' list is empty. "
+                "Recommendations must be explicitly constructed by report builder; silent validator auto-repair is rejected."
+            )
 
         # 4. Reject orphan recommendations & ensure linked_findings integrity
         all_recs = list(self.recommendations)

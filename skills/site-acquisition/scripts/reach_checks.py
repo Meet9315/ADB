@@ -135,6 +135,7 @@ def check_r1(manifest: Dict) -> List[Dict]:
         return []  # No robots.txt at all — not an R1 finding
 
     ai_rules: Dict = manifest.get("robots", {}).get("ai_agent_rules", {})
+    FINDING_ID_COUNTER["R1"] = 0
     findings: List[Dict] = []
 
     blocked_agents: List[str] = []
@@ -393,6 +394,7 @@ def check_r3(manifest: Dict) -> List[Dict]:
     sitemap = manifest.get("sitemap", {})
     crawled_pages = manifest.get("crawled_pages", [])
     pages_ok = [p for p in crawled_pages if p.get("slug")]
+    FINDING_ID_COUNTER["R3"] = 0
     findings: List[Dict] = []
 
     # Small-site exemption: ≤4 pages, no sitemap needed
@@ -526,6 +528,7 @@ def check_r5(manifest: Dict, corpus_dir: Path) -> List[Dict]:
     crawled_pages = manifest.get("crawled_pages", [])
     base_url = manifest.get("base_url", "")
     origin_host = manifest.get("origin_host", "")
+    FINDING_ID_COUNTER["R5"] = 0
     findings: List[Dict] = []
 
     for page in crawled_pages:
@@ -622,17 +625,20 @@ def check_r5(manifest: Dict, corpus_dir: Path) -> List[Dict]:
         # R5c: 4xx on internally-linked pages (using crawled_pages that had 4xx)
         status = page.get("status_code")
         if status and 400 <= status < 500:
-            # Check if this page was linked from another same-origin page
-            try:
-                page_host = urlparse(page_url).netloc.lower()
-                origin_lower = origin_host.lower()
-                is_internal = (page_host == origin_lower or
-                               page_host == f"www.{origin_lower}" or
-                               f"www.{page_host}" == origin_lower)
-            except Exception:
-                is_internal = False
+            source_url = page.get("source_url") or meta.get("source_url")
+            # If not in metadata, inspect crawled 200 pages to confirm an actual internal link exists
+            if not source_url:
+                for other in crawled_pages:
+                    if other.get("status_code") == 200 and other.get("slug"):
+                        other_html_path = corpus_dir / other["slug"] / "raw.html"
+                        if other_html_path.exists():
+                            other_html = other_html_path.read_text(encoding="utf-8", errors="replace")
+                            target_path = urlparse(page_url).path
+                            if target_path and len(target_path) > 1 and target_path in other_html:
+                                source_url = other.get("final_url") or other.get("url")
+                                break
 
-            if is_internal:
+            if source_url:
                 findings.append({
                     "id": _new_id("R5"),
                     "check_id": "R5",
@@ -641,20 +647,21 @@ def check_r5(manifest: Dict, corpus_dir: Path) -> List[Dict]:
                     "evidence": {
                         "type": "internal_link_4xx",
                         "url": page_url,
+                        "source_page_url": source_url,
                         "status_code": status,
                     },
                     "raw_severity_class": "medium",
                     "confidence": 0.85,
                     "mechanism": (
-                        f"Internally linked page {page_url} returns HTTP {status}. "
+                        f"Page {page_url} linked internally from {source_url} returns HTTP {status}. "
                         "An AI agent following internal links to build a picture of the "
                         "site will encounter a dead end. If this is a product, article, or "
                         "landing page, the content is effectively invisible to AI."
                     ),
                     "false_positive_guard": (
-                        f"URL is same-origin (host={urlparse(page_url).netloc}). "
+                        f"Observed internal hyperlink on source page '{source_url}' pointing to '{page_url}'. "
                         f"Status {status} was recorded in crawl manifest (not inferred). "
-                        "External resource 4xx are excluded."
+                        "Unlinked 4xx, sitemap URLs, or explicit hunt paths lacking an in-page anchor are excluded."
                     ),
                     "verification_method": (
                         f"curl -s -o /dev/null -w '%{{http_code}}' {page_url}"

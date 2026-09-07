@@ -210,15 +210,27 @@ def extract_signals(manifest: Dict, corpus_dir: Path) -> Dict:
             continue
         html_path = page_dir / "raw.html"
         meta_path = page_dir / "meta.json"
-        if not html_path.exists() or not meta_path.exists():
+        if not html_path.exists():
             continue
 
-        meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        if meta.get("status_code") != 200:
+        meta = {}
+        if meta_path.exists():
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except Exception:
+                meta = {}
+
+        if meta and meta.get("status_code", 200) != 200:
             continue
 
         html = html_path.read_text(encoding="utf-8", errors="replace")
         url = meta.get("final_url") or meta.get("url", "")
+        if not url and manifest:
+            for cp in manifest.get("crawled_pages", []):
+                if cp.get("slug") == page_dir.name:
+                    url = cp.get("final_url") or cp.get("url", "")
+                    break
+
         url_lower = url.lower()
         path = urlparse(url).path.lower()
 
