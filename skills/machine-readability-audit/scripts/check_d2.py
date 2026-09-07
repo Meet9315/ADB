@@ -61,12 +61,7 @@ MAX_DECORATIVE_PX = 50
 # This tight window prevents unrelated paragraph text from acting as a restatement guard.
 CAPTION_WINDOW_CHARS = 80
 
-FINDING_ID_COUNTER: Dict[str, int] = {}
 
-
-def _new_id(check_id: str) -> str:
-    FINDING_ID_COUNTER[check_id] = FINDING_ID_COUNTER.get(check_id, 0) + 1
-    return f"F-{check_id}-{FINDING_ID_COUNTER[check_id]:03d}"
 
 
 # ---------------------------------------------------------------------------
@@ -262,7 +257,6 @@ def _context_restates_content(img: Dict) -> Tuple[bool, str]:
 
 def check_d2(corpus_dir: Path) -> List[Dict]:
     """Run D2 on all pages in corpus_dir."""
-    FINDING_ID_COUNTER["D2"] = 0
     findings: List[Dict] = []
 
     for page_dir in sorted(corpus_dir.iterdir()):
@@ -306,7 +300,7 @@ def check_d2(corpus_dir: Path) -> List[Dict]:
 
             alt_status = "absent" if img["alt"] is None else "empty string"
             findings.append({
-                "id": _new_id("D2"),
+                "id": f"F-D2-{len(findings) + 1:03d}",
                 "check_id": "D2",
                 "page_url": url,
                 "root_cause": "representation_gap",
@@ -358,7 +352,7 @@ def check_d2(corpus_dir: Path) -> List[Dict]:
             if (has_pdf or has_video) and not has_transcript:
                 embed_type = "PDF" if has_pdf else "video"
                 findings.append({
-                    "id": _new_id("D2"),
+                    "id": f"F-D2-{len(findings) + 1:03d}",
                     "check_id": "D2",
                     "page_url": url,
                     "root_cause": "representation_gap",

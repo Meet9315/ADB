@@ -43,3 +43,8 @@ jobs:
         run: |
           pytest skills/audit-orchestrator/tests/test_models.py
 
+      - name: Run robots RFC 9309 unit tests
+        run: |
+          pytest skills/site-acquisition/tests/test_robots.py
+
+

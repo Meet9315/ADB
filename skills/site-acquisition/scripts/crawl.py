@@ -109,6 +109,7 @@ def _parse_robots_txt(raw: str) -> Dict[str, Dict]:
         line = line.strip()
         if not line or line.startswith("#"):
             if not line:
+                current_agents = []
                 in_directive_block = False
             continue
         if ":" not in line:
@@ -118,22 +119,24 @@ def _parse_robots_txt(raw: str) -> Dict[str, Dict]:
         val = val.strip()
         if key == "user-agent":
             agent_lower = val.lower()
-            if in_directive_block:
+            if in_directive_block or not current_agents:
                 current_agents = [agent_lower]
                 in_directive_block = False
             else:
                 current_agents.append(agent_lower)
             rules.setdefault(agent_lower, {"disallow": [], "allow": [], "crawl_delay": None})
-        elif key == "disallow" and val:
+        elif key == "disallow":
             in_directive_block = True
-            for a in current_agents:
-                rules.setdefault(a, {"disallow": [], "allow": [], "crawl_delay": None})
-                rules[a]["disallow"].append(val)
-        elif key == "allow" and val:
+            if val:
+                for a in current_agents:
+                    rules.setdefault(a, {"disallow": [], "allow": [], "crawl_delay": None})
+                    rules[a]["disallow"].append(val)
+        elif key == "allow":
             in_directive_block = True
-            for a in current_agents:
-                rules.setdefault(a, {"disallow": [], "allow": [], "crawl_delay": None})
-                rules[a]["allow"].append(val)
+            if val:
+                for a in current_agents:
+                    rules.setdefault(a, {"disallow": [], "allow": [], "crawl_delay": None})
+                    rules[a]["allow"].append(val)
         elif key == "crawl-delay":
             in_directive_block = True
             for a in current_agents:
@@ -145,20 +148,60 @@ def _parse_robots_txt(raw: str) -> Dict[str, Dict]:
     return rules
 
 
+def _path_matches_rule(path: str, pattern: str) -> bool:
+    """
+    Check if a URL path matches a robots.txt pattern per RFC 9309 §2.2.2.
+    Supports wildcards (*) and end-of-path markers ($).
+    """
+    if not pattern:
+        return False
+    has_end_anchor = pattern.endswith("$")
+    clean_pattern = pattern[:-1] if has_end_anchor else pattern
+
+    parts = clean_pattern.split("*")
+    escaped_parts = [re.escape(p) for p in parts]
+    regex_str = "^" + ".*".join(escaped_parts)
+    if has_end_anchor:
+        regex_str += "$"
+    try:
+        return bool(re.match(regex_str, path))
+    except re.error:
+        return path.startswith(pattern)
+
+
 def _is_path_disallowed(path: str, rules_for_agent: Dict) -> bool:
-    """Check if *path* is disallowed by the parsed rules for a single agent."""
-    # Allow rules take precedence over Disallow for the same prefix.
-    for allowed in rules_for_agent.get("allow", []):
-        if path.startswith(allowed):
-            return False
-    for disallowed in rules_for_agent.get("disallow", []):
-        if path.startswith(disallowed):
-            return True
-    return False
+    """
+    Check if *path* is disallowed by the parsed rules for a single agent per RFC 9309.
+    1. The rule with the longest matching pattern (most specific) takes precedence.
+    2. If an Allow and Disallow pattern have equal length, Allow takes precedence.
+    3. If no rules match, the path is allowed by default.
+    """
+    allow_rules = rules_for_agent.get("allow", [])
+    disallow_rules = rules_for_agent.get("disallow", [])
+
+    best_allow_len = -1
+    for pattern in allow_rules:
+        if pattern and _path_matches_rule(path, pattern):
+            if len(pattern) > best_allow_len:
+                best_allow_len = len(pattern)
+
+    best_disallow_len = -1
+    for pattern in disallow_rules:
+        if pattern and _path_matches_rule(path, pattern):
+            if len(pattern) > best_disallow_len:
+                best_disallow_len = len(pattern)
+
+    if best_allow_len == -1 and best_disallow_len == -1:
+        return False
+
+    if best_allow_len >= best_disallow_len:
+        return False
+
+    return True
 
 
 def is_url_allowed(url: str, all_rules: Dict) -> bool:
-    """Return True if our user-agent may fetch *url*."""
+    """Return True if our user-agent may fetch *url* under RFC 9309."""
     path = urlparse(url).path or "/"
     # 1. Check specific matching agent first (case-insensitive)
     for agent_candidate in (USER_AGENT.lower(), "auditbot", "bot"):

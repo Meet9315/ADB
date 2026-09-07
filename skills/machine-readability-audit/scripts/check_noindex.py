@@ -56,12 +56,7 @@ EXCLUDED_TITLE_KEYWORDS = {
     "reset password", "forgot password",
 }
 
-FINDING_ID_COUNTER: Dict[str, int] = {}
 
-
-def _new_id(check_id: str) -> str:
-    FINDING_ID_COUNTER[check_id] = FINDING_ID_COUNTER.get(check_id, 0) + 1
-    return f"F-{check_id}-{FINDING_ID_COUNTER[check_id]:03d}"
 
 
 def _is_excluded_page(url: str, title: str) -> Tuple[bool, str]:
@@ -112,7 +107,6 @@ def _extract_title(html: str) -> str:
 
 def check_r4(corpus_dir: Path, manifest: Optional[Dict] = None) -> List[Dict]:
     """Run R4 on all pages in corpus_dir."""
-    FINDING_ID_COUNTER["R4"] = 0
     findings: List[Dict] = []
 
     for page_dir in sorted(corpus_dir.iterdir()):
@@ -152,7 +146,7 @@ def check_r4(corpus_dir: Path, manifest: Optional[Dict] = None) -> List[Dict]:
             directive = header_noindex or meta_noindex
 
             findings.append({
-                "id": _new_id("R4"),
+                "id": f"F-R4-{len(findings) + 1:03d}",
                 "check_id": "R4",
                 "page_url": url,
                 "root_cause": "orientation_cost",

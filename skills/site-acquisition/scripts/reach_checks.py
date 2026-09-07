@@ -55,12 +55,8 @@ TRACKING_PARAMS = {
     "fbclid", "gclid", "msclkid", "ref", "source", "mc_cid", "mc_eid",
 }
 
-FINDING_ID_COUNTER: Dict[str, int] = {}
-
-
-def _new_id(check_id: str) -> str:
-    FINDING_ID_COUNTER[check_id] = FINDING_ID_COUNTER.get(check_id, 0) + 1
-    return f"F-{check_id}-{FINDING_ID_COUNTER[check_id]:03d}"
+def _make_id(check_id: str, index: int) -> str:
+    return f"F-{check_id}-{index:03d}"
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +131,6 @@ def check_r1(manifest: Dict) -> List[Dict]:
         return []  # No robots.txt at all — not an R1 finding
 
     ai_rules: Dict = manifest.get("robots", {}).get("ai_agent_rules", {})
-    FINDING_ID_COUNTER["R1"] = 0
     findings: List[Dict] = []
 
     blocked_agents: List[str] = []
@@ -194,7 +189,7 @@ def check_r1(manifest: Dict) -> List[Dict]:
             all_disallow_lines.append(f"User-agent: {agent} → {l}")
 
     findings.append({
-        "id": _new_id("R1"),
+        "id": _make_id("R1", len(findings) + 1),
         "check_id": "R1",
         "page_url": manifest.get("base_url", manifest.get("domain", "unknown")) + "/robots.txt",
         "root_cause": "orientation_cost",
@@ -282,7 +277,7 @@ async def _r2_async(base_url: str) -> List[Dict]:
     status_wall = (b_status == 200 and p_status in (401, 403, 429))
     if status_wall:
         findings.append({
-            "id": _new_id("R2"),
+            "id": _make_id("R2", len(findings) + 1),
             "check_id": "R2",
             "page_url": base_url,
             "root_cause": "orientation_cost",
@@ -324,7 +319,7 @@ async def _r2_async(base_url: str) -> List[Dict]:
             diff_ratio = abs(b_norm - p_norm) / max(b_norm, p_norm)
             if diff_ratio > 0.50:
                 findings.append({
-                    "id": _new_id("R2"),
+                    "id": _make_id("R2", len(findings) + 1),
                     "check_id": "R2",
                     "page_url": base_url,
                     "root_cause": "orientation_cost",
@@ -394,7 +389,6 @@ def check_r3(manifest: Dict) -> List[Dict]:
     sitemap = manifest.get("sitemap", {})
     crawled_pages = manifest.get("crawled_pages", [])
     pages_ok = [p for p in crawled_pages if p.get("slug")]
-    FINDING_ID_COUNTER["R3"] = 0
     findings: List[Dict] = []
 
     # Small-site exemption: ≤4 pages, no sitemap needed
@@ -404,7 +398,7 @@ def check_r3(manifest: Dict) -> List[Dict]:
     # Check 1: Sitemap entirely absent
     if not sitemap.get("found"):
         findings.append({
-            "id": _new_id("R3"),
+            "id": _make_id("R3", len(findings) + 1),
             "check_id": "R3",
             "page_url": manifest.get("base_url", "") + "/sitemap.xml",
             "root_cause": "orientation_cost",
@@ -438,7 +432,7 @@ def check_r3(manifest: Dict) -> List[Dict]:
     errors = sitemap.get("errors", [])
     if errors:
         findings.append({
-            "id": _new_id("R3"),
+            "id": _make_id("R3", len(findings) + 1),
             "check_id": "R3",
             "page_url": manifest.get("base_url", "") + "/sitemap.xml",
             "root_cause": "orientation_cost",
@@ -478,7 +472,7 @@ def check_r3(manifest: Dict) -> List[Dict]:
     if missing_from_sitemap and len(sitemap_urls_raw) > 0:
         missing_urls = [p["final_url"] for p in missing_from_sitemap[:5]]
         findings.append({
-            "id": _new_id("R3"),
+            "id": _make_id("R3", len(findings) + 1),
             "check_id": "R3",
             "page_url": manifest.get("base_url", ""),
             "root_cause": "orientation_cost",
@@ -528,7 +522,6 @@ def check_r5(manifest: Dict, corpus_dir: Path) -> List[Dict]:
     crawled_pages = manifest.get("crawled_pages", [])
     base_url = manifest.get("base_url", "")
     origin_host = manifest.get("origin_host", "")
-    FINDING_ID_COUNTER["R5"] = 0
     findings: List[Dict] = []
 
     for page in crawled_pages:
@@ -550,9 +543,12 @@ def check_r5(manifest: Dict, corpus_dir: Path) -> List[Dict]:
         # Count hops by comparing requested URL vs final URL (basic 1-hop detection)
         # More precise: use response_headers chain if available
         redirect_count = meta.get("redirect_count", 0)
+        if redirect_count < 3 and page_url != final_url:
+            redirect_count = max(redirect_count, 1)
+
         if redirect_count >= 3:
             findings.append({
-                "id": _new_id("R5"),
+                "id": _make_id("R5", len(findings) + 1),
                 "check_id": "R5",
                 "page_url": page_url,
                 "root_cause": "orientation_cost",
@@ -590,7 +586,7 @@ def check_r5(manifest: Dict, corpus_dir: Path) -> List[Dict]:
                 norm_og = _normalize_url_for_comparison(og_url)
                 if norm_can != norm_og:
                     findings.append({
-                        "id": _new_id("R5"),
+                        "id": _make_id("R5", len(findings) + 1),
                         "check_id": "R5",
                         "page_url": final_url,
                         "root_cause": "identity_irresolution",
@@ -640,7 +636,7 @@ def check_r5(manifest: Dict, corpus_dir: Path) -> List[Dict]:
 
             if source_url:
                 findings.append({
-                    "id": _new_id("R5"),
+                    "id": _make_id("R5", len(findings) + 1),
                     "check_id": "R5",
                     "page_url": page_url,
                     "root_cause": "orientation_cost",
