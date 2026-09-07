@@ -22,8 +22,11 @@ REACH_CHECKS = REPO_ROOT / "skills/site-acquisition/scripts/reach_checks.py"
 CHECK_NOINDEX = REPO_ROOT / "skills/machine-readability-audit/scripts/check_noindex.py"
 CHECK_D2 = REPO_ROOT / "skills/machine-readability-audit/scripts/check_d2.py"
 CHECK_D1 = REPO_ROOT / "skills/machine-readability-audit/scripts/check_d1.py"
+CHECK_D3 = REPO_ROOT / "skills/machine-readability-audit/scripts/check_d3.py"
+CHECK_E1 = REPO_ROOT / "skills/machine-readability-audit/scripts/check_e1.py"
 CHECK_E2 = REPO_ROOT / "skills/machine-readability-audit/scripts/check_e2.py"
 CHECK_E3 = REPO_ROOT / "skills/machine-readability-audit/scripts/check_e3.py"
+CHECK_E4 = REPO_ROOT / "skills/machine-readability-audit/scripts/check_e4.py"
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
@@ -107,6 +110,46 @@ def run_e3(fixture: Path) -> list[dict]:
         return json.loads(result.stdout)
     except json.JSONDecodeError:
         return []
+
+
+def run_d3(fixture: Path) -> list[dict]:
+    corpus_dir = fixture / "pages"
+    manifest = fixture / "crawl_manifest.json"
+    result = subprocess.run(
+        [sys.executable, str(CHECK_D3), str(corpus_dir), "--manifest", str(manifest)],
+        capture_output=True, text=True,
+    )
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return []
+
+
+def run_e1(fixture: Path) -> list[dict]:
+    corpus_dir = fixture / "pages"
+    manifest = fixture / "crawl_manifest.json"
+    result = subprocess.run(
+        [sys.executable, str(CHECK_E1), str(corpus_dir), "--manifest", str(manifest)],
+        capture_output=True, text=True,
+    )
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return []
+
+
+def run_e4(fixture: Path) -> list[dict]:
+    corpus_dir = fixture / "pages"
+    manifest = fixture / "crawl_manifest.json"
+    result = subprocess.run(
+        [sys.executable, str(CHECK_E4), str(corpus_dir), "--manifest", str(manifest)],
+        capture_output=True, text=True,
+    )
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return []
+
 
 
 def check_fields(findings: list[dict]) -> list[str]:
@@ -332,6 +375,151 @@ if ok:
         print(f"  FAIL [E3-quotability] Expected quotability_gap evidence, got {ev}")
 test("E3 fires on canonical question quotability gap with best passage and failure reason", ok)
 
+# --- D3: Semantic structure absent ---
+print("\n[D3-semantic-structure] Missing h1, broken heading hierarchy, missing main landmark")
+import tempfile
+with tempfile.TemporaryDirectory() as tmp_d3:
+    tmp_d3_path = Path(tmp_d3)
+    p_dir = tmp_d3_path / "pages" / "page1"
+    p_dir.mkdir(parents=True)
+
+    body_text = (
+        "This is a substantive article discussing various important concepts. "
+        "It contains enough words to exceed the minimum threshold for semantic evaluation. "
+        "Here we discuss architecture, reliability, maintainability, and security across modern distributed software systems. "
+        "Furthermore, we analyze database indexing strategies, cache invalidation protocols, and consistency models. "
+        "Notice that h2 jumps directly to h4, skipping h3 downwards in hierarchy. "
+        "Additionally, there is no h1 tag anywhere on this document, and neither a main tag nor a role='main' attribute is present. "
+    ) * 2
+
+    d3_html = (
+        "<!DOCTYPE html><html><head><title>Semantic Test</title></head><body>"
+        "<header><nav><a href='/'>Home</a></nav></header>"
+        "<div>"
+        "<h2>Introduction</h2>"
+        f"<p>{body_text}</p>"
+        "<h4>Deep Nested Topic</h4>"
+        "<p>Further discussion on distributed system consensus algorithms like Raft and Paxos.</p>"
+        "</div>"
+        "<footer><p>Footer content</p></footer>"
+        "</body></html>"
+    )
+    (p_dir / "raw.html").write_text(d3_html, encoding="utf-8")
+    (p_dir / "text.txt").write_text(body_text, encoding="utf-8")
+    (p_dir / "meta.json").write_text(json.dumps({"url": "https://example.com/article", "status_code": 200, "title": "Semantic Test"}), encoding="utf-8")
+
+    m_dict = {
+        "schema_version": "1.0",
+        "domain": "example.com",
+        "base_url": "https://example.com",
+        "crawled_pages": [{"url": "https://example.com/article", "slug": "page1", "status_code": 200}],
+    }
+    (tmp_d3_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    d3_findings = run_d3(tmp_d3_path)
+    d3_cids = [f["check_id"] for f in d3_findings]
+    d3_types = [f["evidence"]["type"] for f in d3_findings]
+    d3_sevs = [f["raw_severity_class"] for f in d3_findings]
+
+    d3_ok = (
+        len(d3_findings) == 3
+        and all(cid == "D3" for cid in d3_cids)
+        and "missing_h1" in d3_types
+        and "missing_main_landmark" in d3_types
+        and "broken_heading_hierarchy" in d3_types
+        and all(s == "low" for s in d3_sevs)
+    )
+    if not d3_ok:
+        print(f"  FAIL [D3] Expected 3 D3 low-severity findings, got {d3_findings}")
+    test("D3 flags missing h1, missing main landmark, and broken heading hierarchy with minor/low severity", d3_ok)
+
+# --- E1: Missing structured data for inferred archetype ---
+print("\n[E1-structured-data-archetype] Inferred archetype diagnostic pages lacking schema")
+with tempfile.TemporaryDirectory() as tmp_e1:
+    tmp_e1_path = Path(tmp_e1)
+    p_dir = tmp_e1_path / "pages" / "product_item"
+    p_dir.mkdir(parents=True)
+
+    e1_html = (
+        "<!DOCTYPE html><html><head><title>Premium Widget | Store</title></head><body>"
+        "<main><h1>Premium Widget</h1>"
+        "<p>Price: $49.99</p>"
+        "<button>Add to Cart</button>"
+        "<p>High quality precision widget with extensive durability and lifetime replacement guarantee.</p>"
+        "</main></body></html>"
+    )
+    (p_dir / "raw.html").write_text(e1_html, encoding="utf-8")
+    (p_dir / "meta.json").write_text(json.dumps({"url": "https://store.example.com/products/widget-1", "status_code": 200, "title": "Premium Widget"}), encoding="utf-8")
+
+    m_dict = {
+        "schema_version": "1.0",
+        "domain": "store.example.com",
+        "base_url": "https://store.example.com",
+        "crawled_pages": [{"url": "https://store.example.com/products/widget-1", "slug": "product_item", "status_code": 200}],
+    }
+    (tmp_e1_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    e1_findings = run_e1(tmp_e1_path)
+    e1_ok = len(e1_findings) == 1 and e1_findings[0]["check_id"] == "E1"
+    if e1_ok:
+        ev = e1_findings[0]["evidence"]
+        e1_ok = "pattern pages crawled" in ev.get("evidence_summary", "") and ev.get("inferred_archetype") == "ecommerce"
+    if not e1_ok:
+        print(f"  FAIL [E1] Expected 1 E1 finding for unannotated product page, got {e1_findings}")
+    test("E1 detects missing Product/Offer schema on ecommerce product-pattern pages", e1_ok)
+
+# --- E4: Duplicate/missing titles and meta descriptions ---
+print("\n[E4-meta-descriptions-titles] Duplicate titles and missing meta descriptions")
+with tempfile.TemporaryDirectory() as tmp_e4:
+    tmp_e4_path = Path(tmp_e4)
+    p1_dir = tmp_e4_path / "pages" / "p1"
+    p2_dir = tmp_e4_path / "pages" / "p2"
+    p1_dir.mkdir(parents=True)
+    p2_dir.mkdir(parents=True)
+
+    text_content = "Substantive page content with more than eighty words for testing purposes. " * 10
+
+    p1_html = (
+        "<!DOCTYPE html><html><head><title>Company Overview | Acme</title></head><body>"
+        "<main><h1>About Acme</h1><p>" + text_content + "</p></main></body></html>"
+    )
+    p2_html = (
+        "<!DOCTYPE html><html><head><title>Company Overview | Acme</title></head><body>"
+        "<main><h1>Leadership</h1><p>" + text_content + "</p></main></body></html>"
+    )
+    (p1_dir / "raw.html").write_text(p1_html, encoding="utf-8")
+    (p1_dir / "text.txt").write_text(text_content, encoding="utf-8")
+    (p1_dir / "meta.json").write_text(json.dumps({"url": "https://acme.example.com/about", "status_code": 200, "title": "Company Overview | Acme"}), encoding="utf-8")
+
+    (p2_dir / "raw.html").write_text(p2_html, encoding="utf-8")
+    (p2_dir / "text.txt").write_text(text_content, encoding="utf-8")
+    (p2_dir / "meta.json").write_text(json.dumps({"url": "https://acme.example.com/leadership", "status_code": 200, "title": "Company Overview | Acme"}), encoding="utf-8")
+
+    m_dict = {
+        "schema_version": "1.0",
+        "domain": "acme.example.com",
+        "base_url": "https://acme.example.com",
+        "crawled_pages": [
+            {"url": "https://acme.example.com/about", "slug": "p1", "status_code": 200},
+            {"url": "https://acme.example.com/leadership", "slug": "p2", "status_code": 200},
+        ],
+    }
+    (tmp_e4_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    e4_findings = run_e4(tmp_e4_path)
+    e4_types = [f["evidence"]["type"] for f in e4_findings]
+    e4_sevs = [f["raw_severity_class"] for f in e4_findings]
+
+    e4_ok = (
+        "duplicate_titles" in e4_types
+        and "missing_meta_descriptions" in e4_types
+        and all(s == "low" for s in e4_sevs)
+    )
+    if not e4_ok:
+        print(f"  FAIL [E4] Expected duplicate_titles and missing_meta_descriptions low-severity findings, got {e4_findings}")
+    test("E4 detects duplicate titles and missing meta descriptions with minor/low severity", e4_ok)
+
+
 # --- CLEAN: All checks must produce 0 findings ---
 print("\n[clean] All checks against clean fixture — must produce 0 findings")
 fx = FIXTURES / "clean"
@@ -340,11 +528,14 @@ all_clean_findings.extend(run_reach(fx, ["R1", "R2", "R3", "R5"]))
 all_clean_findings.extend(run_noindex(fx))
 all_clean_findings.extend(run_d2(fx))
 all_clean_findings.extend(run_d1(fx))
+all_clean_findings.extend(run_d3(fx))
+all_clean_findings.extend(run_e1(fx))
 all_clean_findings.extend(run_e2(fx))
 all_clean_findings.extend(run_e3(fx))
+all_clean_findings.extend(run_e4(fx))
 
 clean_ok = assert_zero("clean", all_clean_findings)
-test("CLEAN fixture produces 0 findings across all 9 deterministic checks (R1, R2, R3, R4, R5, D1, D2, E2, E3)", clean_ok)
+test("CLEAN fixture produces 0 findings across all 12 deterministic checks (R1, R2, R3, R4, R5, D1, D2, D3, E1, E2, E3, E4)", clean_ok)
 
 # --- E3 Tiny-Site Regression Tests ---
 print("\n[e3-tiny-site-regression] Case A: Tiny clean ecommerce site (multi-page policy topics suppressed)")

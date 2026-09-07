@@ -117,6 +117,12 @@ def _make_signature(c: CandidateFinding) -> Tuple[str, ...]:
         return (cid, c.page_url, str(ev.get("field", "")), str(ev.get("structured_value", "")))
     elif cid == "E3":
         return (cid, str(ev.get("canonical_question", "")))
+    elif cid == "D3":
+        return (cid, str(ev.get("type", "")))
+    elif cid == "E1":
+        return (cid, str(ev.get("type", "")))
+    elif cid == "E4":
+        return (cid, str(ev.get("type", "")))
     else:
         return (cid, c.root_cause, c.page_url)
 
@@ -325,6 +331,98 @@ def _instantiate_recommendation(c: CandidateFinding, finding_id: str = "") -> Su
                 f'</section>'
             ),
             priority="high" if ev.get("topic") in ("pricing_tiers", "return_refund") else "medium",
+            linked_findings=linked_findings,
+        )
+
+    elif cid == "D3":
+        ev_type = ev.get("type", "semantic_structure_absent")
+        if ev_type == "missing_h1":
+            title = "Add Primary <h1> Heading Landmark"
+            desc = (
+                f"Page {c.page_url} lacks an <h1> heading landmark. "
+                "Add a descriptive <h1> element to establish the primary topic for document extractors."
+            )
+            code = "<h1>Primary Page Title</h1>"
+        elif ev_type == "missing_main_landmark":
+            title = "Enclose Primary Page Content in <main> Landmark"
+            desc = (
+                f"Page {c.page_url} lacks a <main> or role='main' landmark. "
+                "Wrap primary content inside a <main> element so web agents can distinguish it from navigation and footer chrome."
+            )
+            code = "<main>\n  <!-- Primary content -->\n</main>"
+        else:
+            title = "Correct Heading Hierarchy Nesting"
+            desc = (
+                f"Page {c.page_url} skips heading levels downwards. "
+                "Ensure headings descend sequentially (e.g. h1 -> h2 -> h3) without level skips."
+            )
+            code = "<h1>Title</h1>\n<h2>Section</h2>\n<h3>Subsection</h3>"
+
+        return SuggestedAction(
+            title=title,
+            description=desc,
+            code_snippet=code,
+            priority="low",
+            linked_findings=linked_findings,
+        )
+
+    elif cid == "E1":
+        arch = ev.get("inferred_archetype", "inferred")
+        expected = "/".join(ev.get("expected_schema_types", ["Entity"])[:3])
+        unannotated = ev.get("unannotated_pages_count", 1)
+        total = ev.get("diagnostic_pages_count", 1)
+        first_schema = (ev.get("expected_schema_types") or ["Thing"])[0]
+        return SuggestedAction(
+            title=f"Add Schema.org Structured Data for {arch.replace('_', ' ').title()} Archetype",
+            description=(
+                f"Site was classified as '{arch}', but {unannotated} of {total} diagnostic pages "
+                f"lack {expected} structured data. Add schema.org JSON-LD blocks to provide machine-verifiable entities."
+            ),
+            code_snippet=(
+                '{\n  "@context": "https://schema.org",\n  "@type": "'
+                + first_schema
+                + '",\n  "name": "Title"\n}'
+            ),
+            priority="medium",
+            linked_findings=linked_findings,
+        )
+
+    elif cid == "E4":
+        ev_type = ev.get("type", "metadata_gap")
+        if ev_type == "missing_titles":
+            title = "Add Unique <title> Tags to Substantive Pages"
+            desc = (
+                f"{ev.get('unannotated_pages_count', 1)} substantive page(s) lack a <title> tag. "
+                "Provide a concise, descriptive title for every page."
+            )
+            code = "<title>Descriptive Page Title | Brand</title>"
+        elif ev_type == "missing_meta_descriptions":
+            title = "Add Informative Meta Descriptions to Substantive Pages"
+            desc = (
+                f"{ev.get('unannotated_pages_count', 1)} substantive page(s) lack a meta description tag. "
+                "Add <meta name='description' content='...'> summarizing the page in 150-160 characters."
+            )
+            code = '<meta name="description" content="Concise factual overview of this page.">'
+        elif ev_type == "duplicate_titles":
+            title = "Disambiguate Duplicate Page Titles"
+            desc = (
+                f"Found {ev.get('duplicate_groups_count', 1)} cluster(s) of identical page titles across "
+                f"{ev.get('total_affected_pages', 2)} substantive URLs. Ensure each page has a distinct title."
+            )
+            code = "<title>Unique Page Concept | Brand</title>"
+        else:
+            title = "Differentiate Duplicate Meta Descriptions"
+            desc = (
+                f"Found {ev.get('duplicate_groups_count', 1)} cluster(s) of duplicate meta descriptions across "
+                f"{ev.get('total_affected_pages', 2)} substantive URLs. Provide unique summaries."
+            )
+            code = '<meta name="description" content="Unique summary tailored specifically to this page.">'
+
+        return SuggestedAction(
+            title=title,
+            description=desc,
+            code_snippet=code,
+            priority="low",
             linked_findings=linked_findings,
         )
 

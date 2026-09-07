@@ -157,8 +157,11 @@ def run_audit_pipeline(
         mra_scripts / "check_noindex.py",  # R4
         mra_scripts / "check_d1.py",       # D1
         mra_scripts / "check_d2.py",       # D2
+        mra_scripts / "check_d3.py",       # D3
+        mra_scripts / "check_e1.py",       # E1
         mra_scripts / "check_e2.py",       # E2
         mra_scripts / "check_e3.py",       # E3
+        mra_scripts / "check_e4.py",       # E4
     ]
 
     for cscript in checks:

@@ -198,3 +198,70 @@ Non-proactive recommendations (`is_proactive=False`) MUST specify at least one v
     <p>Direct, factual statement specifying exact terms, numbers, policies, or capabilities.</p>
   </section>
   ```
+
+---
+
+## D3 — Semantic Structure Absent
+
+- **Check ID**: `D3`
+- **Root Cause**: `representation_gap`
+- **Title**: Structure Document Outlines with Semantic Landmarks and Heading Hierarchy
+- **Description**:
+  Substantive page content is missing core HTML5 landmarks (<main> or role="main"), lacks an <h1> heading,
+  or exhibits broken heading hierarchy. Autonomous web agents and summarizers rely on semantic landmarks
+  to isolate primary content from navigation boilerplate and to establish document entity hierarchy.
+  Add an <h1> heading, wrap primary content inside <main>, and ensure headings descend sequentially without skipping levels.
+- **Code Snippet**:
+  ```html
+  <main>
+    <h1>Primary Page Topic</h1>
+    <section>
+      <h2>Section Overview</h2>
+      <h3>Detailed Subsection</h3>
+    </section>
+  </main>
+  ```
+
+---
+
+## E1 — Missing Structured Data for Inferred Archetype
+
+- **Check ID**: `E1`
+- **Root Cause**: `corroboration_deficit`
+- **Title**: Add Schema.org Structured Data Matching Site Archetype
+- **Description**:
+  The site was classified under an established archetype, but diagnostic pages lack matching structured data markup.
+  AI search engines and assistants rely on schema.org entities to extract products, articles, or services
+  with high factual confidence. Add JSON-LD schema blocks to diagnostic pages to enable rich answers and knowledge panel retrieval.
+- **Code Snippet**:
+  ```html
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "name": "Product Name",
+    "description": "Product summary for AI indexers"
+  }
+  </script>
+  ```
+
+---
+
+## E4 — Duplicate or Missing Titles and Meta Descriptions
+
+- **Check ID**: `E4`
+- **Root Cause**: `representation_gap`
+- **Title**: Provide Unique, Descriptive Titles and Meta Descriptions
+- **Description**:
+  Substantive pages lack unique <title> tags or <meta name="description"> attributes, or share duplicate
+  metadata across distinct URLs. Search engines and AI retrieval agents use title tags and meta descriptions
+  as primary identifiers for query matching, snippet generation, and vector clustering.
+  Ensure every substantive URL has a distinct, descriptive title and informative meta description.
+- **Code Snippet**:
+  ```html
+  <head>
+    <title>Distinct Page Topic | Brand Name</title>
+    <meta name="description" content="A concise, factual 150-160 character summary of the specific content on this page.">
+  </head>
+  ```
+
