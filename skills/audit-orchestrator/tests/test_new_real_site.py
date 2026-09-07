@@ -122,7 +122,7 @@ if __name__ == "__main__":
     if "--live" in sys.argv:
         idx = sys.argv.index("--live")
         target = sys.argv[idx + 1] if len(sys.argv) > idx + 1 and not sys.argv[idx + 1].startswith("-") else "htmx.org"
-        test_live_real_site_audit(target)
+        run_live_real_site_audit(target)
     elif len(sys.argv) > 1:
         test_real_site_report(Path(sys.argv[1]))
     else:
@@ -130,4 +130,4 @@ if __name__ == "__main__":
         try:
             test_real_site_report()
         except FileNotFoundError:
-            test_live_real_site_audit("htmx.org")
+            run_live_real_site_audit("htmx.org")
