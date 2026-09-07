@@ -5,8 +5,8 @@ description: >
   deficiencies, JS-rendering divergence, and content-accessibility problems that reduce
   AI agent discoverability. Emits finding candidates in the hardened finding contract format
   per the project constitution. Use this skill after site-acquisition has produced a corpus
-  and crawl manifest. Implements Tier 0 core checks: R4, D1, D2, E2, E3 (reach-layer
-  checks R1, R2, R3, R5 are in site-acquisition).
+  and crawl manifest. Implements Tier 0 core and stretch checks: R4, D1, D2, D3, E1, E2,
+  E3, E4 (reach-layer checks R1, R2, R3, R5 are in site-acquisition).
 license: MIT
 compatibility: Requires Python 3.10+. Operates on local corpus — no network access needed.
 metadata:
@@ -33,10 +33,17 @@ This skill never issues network requests. It reads only from the local corpus.
 | `scripts/check_d1.py` | `corpus_dir` | Path to corpus pages directory |
 | `scripts/check_d1.py` | `--manifest` | Path to `crawl_manifest.json` (optional) |
 | `scripts/check_d2.py` | `corpus_dir` | Path to corpus pages directory |
+| `scripts/check_d3.py` | `corpus_dir` | Path to corpus pages directory |
+| `scripts/check_d3.py` | `--manifest` | Path to `crawl_manifest.json` (optional) |
+| `scripts/check_e1.py` | `corpus_dir` | Path to corpus pages directory |
+| `scripts/check_e1.py` | `--manifest` | Path to `crawl_manifest.json` (optional) |
 | `scripts/check_e2.py` | `corpus_dir` | Path to corpus pages directory |
 | `scripts/check_e2.py` | `--manifest` | Path to `crawl_manifest.json` (optional) |
 | `scripts/check_e3.py` | `corpus_dir` | Path to corpus pages directory |
 | `scripts/check_e3.py` | `--manifest` | Path to `crawl_manifest.json` (optional) |
+| `scripts/check_e4.py` | `corpus_dir` | Path to corpus pages directory |
+| `scripts/check_e4.py` | `--manifest` | Path to `crawl_manifest.json` (optional) |
+
 
 ---
 
@@ -139,6 +146,44 @@ fully executed DOM on sampled pages.
 
 ---
 
+### D3 — Semantic Structure Absent (`scripts/check_d3.py`)
+
+Evaluates core HTML5 document landmarks and heading outline integrity on substantive pages:
+1. **Missing `<h1>` landmark**: Flags substantive pages without an `<h1>` heading element.
+2. **Missing `<main>` landmark**: Flags pages lacking a `<main>` tag, `role="main"` attribute, or standard primary landmark container ID (`#main`, `#main-content`, `#content`, `#primary`).
+3. **Broken heading hierarchy**: Flags downward skips of 2 or more levels (e.g. `h1` directly to `h3`, `h2` directly to `h4`).
+
+**DO NOT FIRE (Negative Logic — D3):**
+- **Overweight Trap Guard**: Severity is strictly **low** regardless of findings count; prevents SEO-checklist inflation of the report.
+- **Thin / non-substantive page guard**: Only evaluates pages with `visible_word_count >= 80` and HTTP 200 status.
+- **Utility and authentication exclusions**: Excludes private or functional endpoints (`/login`, `/signin`, `/cart`, `/checkout`, `/account`, `/search`, `/404`, error pages).
+- **Upward heading transitions**: Ascending level jumps (e.g. `h3` back to `h2` or `h1`) are closing sub-topics and are completely valid; never flag.
+- **Tag-scoped attributes**: `role="main"` and `id="main"` are evaluated strictly within HTML element opening tags; literal occurrences in body prose are ignored.
+
+---
+
+### E1 — Missing Structured Data for Inferred Archetype (`scripts/check_e1.py`)
+
+Checks whether diagnostic pages for the site's inferred archetype provide corresponding Schema.org entities:
+1. Reads primary archetype from `archetype.py`.
+2. Inspects crawled pages for archetype-diagnostic patterns:
+   - `ecommerce`: Product detail URLs (`/products/`, `/items/`, `/p/`) or pages containing both prices and buy/cart buttons.
+   - `content` / `news`: Article URLs (`/blog/`, `/posts/`, `/articles/`) or pages containing visible bylines and publication dates.
+   - `saas`: Homepage or pricing/feature endpoints (`/pricing`, `/features`).
+   - `local_business`: Contact, location, or store visit endpoints (`/contact`, `/location`, `/visit`).
+   - `corporate`: About and company profile endpoints (`/about`, `/company`).
+3. Verifies presence of matching structured data (JSON-LD, Microdata, RDFa) via `structured_data.py`.
+4. Emits evidence parameterized with diagnostic and unannotated page counts:
+   `"X product-pattern pages crawled; Y lack Product/Offer structured data."`
+
+**DO NOT FIRE (Negative Logic — E1):**
+- **Archetype Gate as False-Positive Guard**: Never demands `Product`/`Offer` schema on sites classified as `blog`, `portfolio`, `docs`, or `corporate`.
+- **Diagnostic pattern requirement**: Only fires if at least one page matches concrete, diagnostic archetype patterns. If no diagnostic pages exist, do not fire.
+- **Unknown archetype suppression**: If site archetype is `unknown` or lacks established schema definitions, do not fire.
+- **Full syntax parity**: Consumes JSON-LD, Microdata, and RDFa before declaring structured data absent.
+
+---
+
 ### E2 — Invalid / Contradicting Structured Data (`scripts/check_e2.py`)
 
 Consumes normalized records from `structured_data.py`. Covers JSON-LD, Microdata, and RDFa.
@@ -188,6 +233,22 @@ to canonical questions for the site's archetype.
 - **Never reconstruct from external knowledge**: Evaluation is strictly bounded to the script-extracted corpus.
 - **Tiny-site negative logic**: When the acquisition manifest marks `is_tiny_site=true`, E3 must not treat absence of multi-page/site-wide policy topics such as shipping, returns, accepted payment methods, warranty, or catalog structure as a quotability gap solely because those pages are absent. These questions are suppressed unless the acquired corpus actually provides relevant evidence requiring evaluation. E3 must not be disabled wholesale for tiny sites.
 - **Tiny-site calibration**: For sites tagged `is_tiny_site`, orientation and primary purpose questions take precedence; non-suppressed questions are evaluated normally.
+
+---
+
+### E4 — Duplicate / Missing Titles and Meta Descriptions (`scripts/check_e4.py`)
+
+Evaluates essential HTML document metadata across the crawled corpus:
+1. **Missing `<title>`**: Flags substantive pages lacking a `<title>` element or containing only empty whitespace.
+2. **Missing meta description**: Flags substantive pages without a non-empty `<meta name="description" content="...">` tag.
+3. **Duplicate page titles**: Groups pages by normalized title (stripping common brand/site suffixes) and flags clusters shared by multiple distinct URLs.
+4. **Duplicate meta descriptions**: Groups pages by normalized description text and flags duplicate boilerplate descriptions.
+
+**DO NOT FIRE (Negative Logic — E4):**
+- **Report Real Estate Guard**: Emits site-level aggregated cluster findings rather than individual findings per page, preventing dozens of minor metadata defects from consuming disproportionate report real estate.
+- **Severity ceiling**: Strictly **low** severity for all findings.
+- **Brand suffix normalization**: Common site suffixes (` - Brand`, ` | Brand`, ` — Brand`) are stripped before duplicate title comparison so `Home | Acme` and `About | Acme` are not falsely flagged.
+- **Thin page & utility exclusion**: Evaluates only substantive pages (`visible_word_count >= 80`, HTTP 200). Excludes `/login`, `/cart`, `/checkout`, `/404`, and search utility endpoints.
 
 ---
 
