@@ -1,5 +1,6 @@
 # Runtime output — not committed
 corpus/
+scratch/
 
 # Python
 __pycache__/

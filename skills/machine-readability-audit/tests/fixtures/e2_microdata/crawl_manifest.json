@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "tool": "site-acquisition/crawl.py",
+  "domain": "microdata.example.com",
+  "base_url": "https://microdata.example.com",
+  "origin_host": "example.com",
+  "pages_crawled": 1,
+  "pages_attempted": 1,
+  "budget": {
+    "started_at": 1788716828.2092366,
+    "elapsed_s": 5.0,
+    "soft_deadline_s": 240.0,
+    "hard_deadline_s": 300.0,
+    "over_soft": false,
+    "over_hard": false
+  },
+  "skips": []
+}

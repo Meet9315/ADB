@@ -21,11 +21,13 @@ def write_manifest(fixture_dir: Path, manifest: dict) -> None:
     )
 
 
-def write_page(fixture_dir: Path, slug: str, html: str, meta: dict) -> None:
+def write_page(fixture_dir: Path, slug: str, html: str, meta: dict, rendered_html: str = None) -> None:
     d = fixture_dir / "pages" / slug
     d.mkdir(parents=True, exist_ok=True)
     (d / "raw.html").write_text(html, encoding="utf-8")
     (d / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    if rendered_html is not None:
+        (d / "rendered.html").write_text(rendered_html, encoding="utf-8")
     # Visible text: strip tags
     import re
     stripped = re.sub(r"<[^>]+>", " ", html)
@@ -471,6 +473,267 @@ def make_clean() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Fixture: e2_wrong_price — JSON-LD price contradiction ($19.99 vs visible $49.99)
+# ---------------------------------------------------------------------------
+def make_e2_wrong_price() -> None:
+    d = FIXTURES_DIR / "e2_wrong_price"
+    d.mkdir(parents=True, exist_ok=True)
+    manifest = {**BASE_MANIFEST, "domain": "wrongprice.example.com", "base_url": "https://wrongprice.example.com"}
+
+    html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Widget Pro - Acme Store</title>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "name": "Widget Pro",
+    "offers": {
+      "@type": "Offer",
+      "price": "19.99",
+      "priceCurrency": "USD",
+      "availability": "https://schema.org/InStock"
+    }
+  }
+  </script>
+</head>
+<body>
+  <h1>Widget Pro</h1>
+  <div class="pricing-box">
+    <p class="current-price">Special Price: $49.99 (Free Express Delivery)</p>
+    <p>Upgrade to Widget Pro today for only $49.99. Backed by our 30-day money-back guarantee.</p>
+  </div>
+</body>
+</html>"""
+
+    write_manifest(d, manifest)
+    write_page(d, "product_wrong_price", html, {
+        "url": "https://wrongprice.example.com/widget-pro",
+        "status_code": 200,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Fixture: e2_microdata — Microdata product with valid properties and matching text
+# ---------------------------------------------------------------------------
+def make_e2_microdata() -> None:
+    d = FIXTURES_DIR / "e2_microdata"
+    d.mkdir(parents=True, exist_ok=True)
+    manifest = {**BASE_MANIFEST, "domain": "microdata.example.com", "base_url": "https://microdata.example.com"}
+
+    html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Microdata Widget Store</title>
+</head>
+<body>
+  <div itemscope itemtype="http://schema.org/Product">
+    <h1 itemprop="name">Microdata Widget Deluxe</h1>
+    <p>Premium quality microdata widget for all industrial uses.</p>
+    <div itemprop="offers" itemscope itemtype="http://schema.org/Offer">
+      <span itemprop="price">29.99</span>
+      <span itemprop="priceCurrency">USD</span>
+    </div>
+    <p>Now in stock for $29.99 with fast doorstep shipping.</p>
+  </div>
+</body>
+</html>"""
+
+    write_manifest(d, manifest)
+    write_page(d, "product_microdata", html, {
+        "url": "https://microdata.example.com/product",
+        "status_code": 200,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Fixture: e2_rdfa — RDFa product with valid properties and matching text
+# ---------------------------------------------------------------------------
+def make_e2_rdfa() -> None:
+    d = FIXTURES_DIR / "e2_rdfa"
+    d.mkdir(parents=True, exist_ok=True)
+    manifest = {**BASE_MANIFEST, "domain": "rdfa.example.com", "base_url": "https://rdfa.example.com"}
+
+    html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>RDFa Gadget Store</title>
+</head>
+<body>
+  <div vocab="http://schema.org/" typeof="Product">
+    <h1 property="name">RDFa Gadget Extreme</h1>
+    <p>High-performance engineering gadget built with modern standards.</p>
+    <div property="offers" typeof="Offer">
+      <span property="price">39.99</span>
+      <span property="priceCurrency">USD</span>
+    </div>
+    <p>Buy the RDFa Gadget Extreme today for $39.99 with comprehensive warranty.</p>
+  </div>
+</body>
+</html>"""
+
+    write_manifest(d, manifest)
+    write_page(d, "product_rdfa", html, {
+        "url": "https://rdfa.example.com/gadget",
+        "status_code": 200,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Fixture: e2_clean — Clean structured data with matching visible price ($89.99)
+# ---------------------------------------------------------------------------
+def make_e2_clean() -> None:
+    d = FIXTURES_DIR / "e2_clean"
+    d.mkdir(parents=True, exist_ok=True)
+    manifest = {**BASE_MANIFEST, "domain": "clean-sd.example.com", "base_url": "https://clean-sd.example.com"}
+
+    html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Clean Electronics - Ultra Headphones</title>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "name": "Ultra Wireless Headphones",
+    "description": "Studio grade wireless headphones with active noise cancellation.",
+    "offers": {
+      "@type": "Offer",
+      "price": "89.99",
+      "priceCurrency": "USD",
+      "availability": "https://schema.org/InStock"
+    }
+  }
+  </script>
+</head>
+<body>
+  <h1>Ultra Wireless Headphones</h1>
+  <p>Studio grade wireless headphones with active noise cancellation.</p>
+  <p>Available now in our store for $89.99 with free 2-day delivery.</p>
+</body>
+</html>"""
+
+    write_manifest(d, manifest)
+    write_page(d, "product_clean", html, {
+        "url": "https://clean-sd.example.com/headphones",
+        "status_code": 200,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Fixture: d1_js_gap — Raw HTML is SPA shell, rendered DOM has rich text (>450 words)
+# ---------------------------------------------------------------------------
+def make_d1_js_gap() -> None:
+    d = FIXTURES_DIR / "d1_js_gap"
+    d.mkdir(parents=True, exist_ok=True)
+    manifest = {**BASE_MANIFEST, "domain": "spa-app.example.com", "base_url": "https://spa-app.example.com"}
+
+    raw_html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Acme Cloud Dashboard</title>
+  <script src="/static/js/main.7f89b1c2.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <noscript>You need to enable JavaScript to run this app.</noscript>
+</body>
+</html>"""
+
+    # Rendered DOM with >450 words of rich content
+    paragraphs = [
+        "Welcome to the Acme Cloud enterprise operations platform and cloud orchestration system.",
+        "Our unified control plane allows development teams to manage microservices, configure automated continuous deployment pipelines, and inspect distributed trace telemetry with sub-millisecond precision across global regions.",
+        "The Developer Tier is completely free for up to three projects and includes five hundred build minutes per month, standard community support, and GitHub integration with automated pull request status checks.",
+        "The Professional Tier costs twenty-nine dollars per user monthly and provides unlimited deployment pipelines, custom domain routing, automated SSL certificate generation, role-based access controls, and twelve-hour turnaround email support.",
+        "The Enterprise Organization Tier costs four hundred and ninety-nine dollars per month and includes dedicated technical account management, single sign-on via Okta and Azure Active Directory, SOC 2 Type II audit report access, ninety-nine point nine nine percent uptime service level agreements, and custom data residency regions across North America, Europe, and Asia Pacific.",
+        "Getting started is straightforward. Install our command-line utility using npm install -g acme-cli, authenticate using your personal access token, run acme init in your repository directory, and deploy instantly with acme deploy --production.",
+        "Our high-performance edge compute network spans over one hundred and twenty cities worldwide, ensuring your APIs and serverless functions execute within twenty milliseconds of your end users.",
+        "Security is central to our architectural foundation. All customer payloads are encrypted in transit via TLS 1.3 and at rest utilizing AES-256 GCM encryption keys rotated automatically every ninety days.",
+        "Comprehensive observability includes distributed tracing across all container clusters, live metric streaming, real-time alert routing to PagerDuty and Slack, and queryable audit logs retained for up to seven years in cold storage.",
+        "Modern infrastructure teams choose Acme Cloud because it eliminates manual cloud configuration, reduces server provisioning latency from hours to seconds, and provides guaranteed compliance with ISO 27001 and FedRAMP standards.",
+        "Contact our global solutions engineering team to schedule a technical architecture review or request custom proof-of-concept testing in your staging environment.",
+    ]
+    rendered_body = "\n".join(f"<p>{p}</p>" for p in paragraphs)
+    rendered_html = f"""<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Acme Cloud Dashboard</title></head>
+<body>
+  <div id="root">
+    <h1>Acme Cloud Operations Platform</h1>
+    {rendered_body}
+  </div>
+</body>
+</html>"""
+
+    write_manifest(d, manifest)
+    write_page(d, "home_spa", raw_html, {
+        "url": "https://spa-app.example.com/",
+        "status_code": 200,
+    }, rendered_html=rendered_html)
+
+
+# ---------------------------------------------------------------------------
+# Fixture: e3_quotability — SaaS site with vague evasive pricing (quotability gap)
+# ---------------------------------------------------------------------------
+def make_e3_quotability() -> None:
+    d = FIXTURES_DIR / "e3_quotability"
+    d.mkdir(parents=True, exist_ok=True)
+    manifest = {
+        **BASE_MANIFEST,
+        "domain": "cloudsaas.example.com",
+        "base_url": "https://cloudsaas.example.com",
+        "crawled_pages": [
+            {"url": "https://cloudsaas.example.com/", "slug": "home_page"},
+            {"url": "https://cloudsaas.example.com/pricing", "slug": "pricing_page"},
+        ]
+    }
+
+    home_html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>CloudSaaS - Enterprise Workflow Platform</title>
+</head>
+<body>
+  <h1>CloudSaaS Workflow Automation</h1>
+  <p>CloudSaaS helps enterprise teams automate complex multi-step workflows, manage cross-team tasks, and integrate APIs effortlessly.</p>
+  <a href="/pricing">View Plans and Pricing</a>
+</body>
+</html>"""
+
+    pricing_html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Plans & Pricing - CloudSaaS</title>
+</head>
+<body>
+  <h1>Flexible Plans for Teams of Every Size</h1>
+  <p>We believe every business is unique. We offer flexible subscription plans tailored specifically to your organization's bespoke requirements.</p>
+  <p>Contact our sales team for pricing details and to schedule an executive consultation today. Pricing is available upon request.</p>
+  <p>Learn more about our enterprise platform capabilities by speaking with a specialist.</p>
+</body>
+</html>"""
+
+    write_manifest(d, manifest)
+    write_page(d, "home_page", home_html, {
+        "url": "https://cloudsaas.example.com/",
+        "status_code": 200,
+    })
+    write_page(d, "pricing_page", pricing_html, {
+        "url": "https://cloudsaas.example.com/pricing",
+        "status_code": 200,
+    })
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
@@ -483,4 +746,11 @@ if __name__ == "__main__":
     make_r5_4xx_link()
     make_d2_images()
     make_clean()
+    # Stage 5 fixtures:
+    make_e2_wrong_price()
+    make_e2_microdata()
+    make_e2_rdfa()
+    make_e2_clean()
+    make_d1_js_gap()
+    make_e3_quotability()
     print("All fixtures generated successfully.")

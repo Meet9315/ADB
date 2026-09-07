@@ -1,0 +1,1 @@
+Widget Pro - Acme Store { "@context": "https://schema.org", "@type": "Product", "name": "Widget Pro", "offers": { "@type": "Offer", "price": "19.99", "priceCurrency": "USD", "availability": "https://schema.org/InStock" } } Widget Pro Special Price: $49.99 (Free Express Delivery) Upgrade to Widget Pro today for only $49.99. Backed by our 30-day money-back guarantee.

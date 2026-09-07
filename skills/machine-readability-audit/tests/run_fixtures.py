@@ -21,6 +21,9 @@ REPO_ROOT = Path(__file__).resolve().parents[3]  # ADB/
 REACH_CHECKS = REPO_ROOT / "skills/site-acquisition/scripts/reach_checks.py"
 CHECK_NOINDEX = REPO_ROOT / "skills/machine-readability-audit/scripts/check_noindex.py"
 CHECK_D2 = REPO_ROOT / "skills/machine-readability-audit/scripts/check_d2.py"
+CHECK_D1 = REPO_ROOT / "skills/machine-readability-audit/scripts/check_d1.py"
+CHECK_E2 = REPO_ROOT / "skills/machine-readability-audit/scripts/check_e2.py"
+CHECK_E3 = REPO_ROOT / "skills/machine-readability-audit/scripts/check_e3.py"
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
@@ -59,6 +62,45 @@ def run_d2(fixture: Path) -> list[dict]:
     corpus_dir = fixture / "pages"
     result = subprocess.run(
         [sys.executable, str(CHECK_D2), str(corpus_dir)],
+        capture_output=True, text=True,
+    )
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return []
+
+
+def run_d1(fixture: Path) -> list[dict]:
+    corpus_dir = fixture / "pages"
+    manifest = fixture / "crawl_manifest.json"
+    result = subprocess.run(
+        [sys.executable, str(CHECK_D1), str(corpus_dir), "--manifest", str(manifest)],
+        capture_output=True, text=True,
+    )
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return []
+
+
+def run_e2(fixture: Path) -> list[dict]:
+    corpus_dir = fixture / "pages"
+    manifest = fixture / "crawl_manifest.json"
+    result = subprocess.run(
+        [sys.executable, str(CHECK_E2), str(corpus_dir), "--manifest", str(manifest)],
+        capture_output=True, text=True,
+    )
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return []
+
+
+def run_e3(fixture: Path) -> list[dict]:
+    corpus_dir = fixture / "pages"
+    manifest = fixture / "crawl_manifest.json"
+    result = subprocess.run(
+        [sys.executable, str(CHECK_E3), str(corpus_dir), "--manifest", str(manifest)],
         capture_output=True, text=True,
     )
     try:
@@ -233,16 +275,75 @@ else:
             ok = False
 test("D2 fires on content image without alt, suppresses logo/spacer/decorative", ok)
 
-# --- CLEAN: All 6 checks must produce 0 findings ---
+# --- D1: JS-render gap ---
+print("\n[D1-js-gap] SPA shell in raw HTML vs full rendered DOM")
+fx = FIXTURES / "d1_js_gap"
+findings = run_d1(fx)
+ok = assert_findings("D1-js-gap", findings, ["D1"])
+if ok:
+    ev = findings[0]["evidence"]
+    ok = ev.get("missing_word_count", 0) > 300 and ev.get("missing_word_ratio", 0.0) > 0.40
+    if not ok:
+        print(f"  FAIL [D1-js-gap] Expected missing_words>300 and ratio>0.40, got {ev}")
+test("D1 fires on JS-render gap (>40% missing words AND >300 gap)", ok)
+
+# --- E2: JSON-LD wrong price contradiction ---
+print("\n[E2-wrong-price] JSON-LD price ($19.99) vs visible price ($49.99)")
+fx = FIXTURES / "e2_wrong_price"
+findings = run_e2(fx)
+ok = assert_findings("E2-wrong-price", findings, ["E2"])
+if ok:
+    ev = findings[0]["evidence"]
+    ok = ev.get("type") == "structured_data_contradiction" and ev.get("field") == "price"
+    if not ok:
+        print(f"  FAIL [E2-wrong-price] Expected price contradiction, got {ev}")
+test("E2 fires on JSON-LD price contradiction against visible text", ok)
+
+# --- E2: Microdata valid & matching ---
+print("\n[E2-microdata] Microdata product with matching visible price")
+fx = FIXTURES / "e2_microdata"
+findings = run_e2(fx)
+ok = assert_zero("E2-microdata", findings)
+test("E2 passes clean Microdata without false contradictions", ok)
+
+# --- E2: RDFa valid & matching ---
+print("\n[E2-rdfa] RDFa product with matching visible price")
+fx = FIXTURES / "e2_rdfa"
+findings = run_e2(fx)
+ok = assert_zero("E2-rdfa", findings)
+test("E2 passes clean RDFa without false contradictions", ok)
+
+# --- E2: Clean structured data ---
+print("\n[E2-clean] Clean JSON-LD product with matching visible price")
+fx = FIXTURES / "e2_clean"
+findings = run_e2(fx)
+ok = assert_zero("E2-clean", findings)
+test("E2 passes clean structured data without findings", ok)
+
+# --- E3: Quotability gap ---
+print("\n[E3-quotability] SaaS site with evasive marketing pricing text")
+fx = FIXTURES / "e3_quotability"
+findings = run_e3(fx)
+ok = assert_findings("E3-quotability", findings, ["E3"])
+if ok:
+    ev = findings[0]["evidence"]
+    ok = ev.get("type") == "quotability_gap"
+    if not ok:
+        print(f"  FAIL [E3-quotability] Expected quotability_gap evidence, got {ev}")
+test("E3 fires on canonical question quotability gap with best passage and failure reason", ok)
+
+# --- CLEAN: All checks must produce 0 findings ---
 print("\n[clean] All checks against clean fixture — must produce 0 findings")
 fx = FIXTURES / "clean"
 all_clean_findings = []
 all_clean_findings.extend(run_reach(fx, ["R1", "R3", "R5"]))
 all_clean_findings.extend(run_noindex(fx))
 all_clean_findings.extend(run_d2(fx))
+all_clean_findings.extend(run_d1(fx))
+all_clean_findings.extend(run_e2(fx))
 
 clean_ok = assert_zero("clean", all_clean_findings)
-test("CLEAN fixture produces 0 findings across all 6 checks", clean_ok)
+test("CLEAN fixture produces 0 findings across deterministic checks", clean_ok)
 
 # ---------------------------------------------------------------------------
 # Summary

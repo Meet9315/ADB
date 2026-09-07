@@ -1,0 +1,2 @@
+# machine-readability-audit dependencies — pinned to tested versions
+extruct==0.18.0
