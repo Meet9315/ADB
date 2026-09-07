@@ -1,0 +1,3 @@
+# audit-orchestrator dependencies — pinned to tested versions
+pydantic==2.12.5
+typer==0.27.2
