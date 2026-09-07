@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
-from models import CandidateFinding, FinalFinding, SuggestedAction  # noqa: E402
+from models import CHECK_TITLES, CandidateFinding, FinalFinding, SuggestedAction  # noqa: E402
 
 
 def load_recommendation_bank(bank_path: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
@@ -728,6 +728,8 @@ def merge_candidate_findings(
 
         final_findings.append(FinalFinding(
             id=fid,
+            title=CHECK_TITLES.get(lead.check_id, f"AI Discoverability Defect ({lead.check_id})"),
+            severity=final_sev,
             check_id=lead.check_id,
             page_url=lead.page_url,
             root_cause=lead.root_cause,

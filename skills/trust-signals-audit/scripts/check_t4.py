@@ -183,7 +183,7 @@ def run_check_t4(
             "id": f"F-T4-{finding_idx:03d}",
             "check_id": "T4",
             "page_url": target_url,
-            "root_cause": "identity_irresolution",
+            "root_cause": "corroboration_deficit",
             "evidence": {
                 "type": "missing_about_presence",
                 "evaluated_pages_count": len(list(corpus_dir.iterdir())),

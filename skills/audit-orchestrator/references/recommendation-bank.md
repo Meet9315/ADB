@@ -1,7 +1,7 @@
 # Recommendation Bank — Canonical Action Templates
 
 This file defines actionable, evidence-derived remediation templates for all implemented check IDs
-(`R1`, `R2`, `R3`, `R4`, `R5`, `D1`, `D2`, `E2`, `E3`).
+(`R1–R5`, `D1–D3`, `E1–E4`, `T1–T4`, `G1–G4`).
 Every suggested action is parameterized strictly by the finding's concrete evidence.
 
 ### Canonical Recommendation Contract & Traceability Guarantee
@@ -23,7 +23,7 @@ Non-proactive recommendations (`is_proactive=False`) MUST specify at least one v
 ## R1 — AI Crawlers Blocked in robots.txt
 
 - **Check ID**: `R1`
-- **Root Cause**: `orientation_cost`
+- **Root Cause**: `representation_gap`
 - **Title**: Update `robots.txt` to Permit Discovery-Oriented AI User-Agents
 - **Description**:
   The current `robots.txt` disallows AI agents from crawling the site:
@@ -50,7 +50,7 @@ Non-proactive recommendations (`is_proactive=False`) MUST specify at least one v
 ## R2 — Bot Challenges or Blocking
 
 - **Check ID**: `R2`
-- **Root Cause**: `orientation_cost`
+- **Root Cause**: `representation_gap`
 - **Title**: Configure WAF Rules to Whitelist Legitimate Search & AI Crawlers
 - **Description**:
   The site edge/WAF returned a blocking challenge or access denial (`status_code: {status_code}`,
@@ -69,7 +69,7 @@ Non-proactive recommendations (`is_proactive=False`) MUST specify at least one v
 ## R3 — Sitemap Missing or Inaccessible
 
 - **Check ID**: `R3`
-- **Root Cause**: `orientation_cost`
+- **Root Cause**: `representation_gap`
 - **Title**: Generate XML Sitemap and Declare Location in `robots.txt`
 - **Description**:
   No valid XML sitemap was discoverable in `robots.txt` directives or at standard paths (`/sitemap.xml`).
@@ -86,7 +86,7 @@ Non-proactive recommendations (`is_proactive=False`) MUST specify at least one v
 ## R4 — noindex Directives on Substantive Pages
 
 - **Check ID**: `R4`
-- **Root Cause**: `orientation_cost`
+- **Root Cause**: `representation_gap`
 - **Title**: Remove Accidental `noindex` Directive from Substantive Page
 - **Description**:
   The substantive page `{page_url}` specifies a `noindex` directive via `{source}` (`{directive_value}`).
@@ -103,7 +103,7 @@ Non-proactive recommendations (`is_proactive=False`) MUST specify at least one v
 ## R5 — Canonical / OG Conflict or 4xx Internal Links
 
 - **Check ID**: `R5`
-- **Root Cause**: `identity_irresolution`
+- **Root Cause**: `representation_gap`
 - **Title**: Resolve Canonical Link Mismatches or Broken Internal Hyperlinks
 - **Description**:
   {r5_detail_description}

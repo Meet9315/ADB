@@ -17,10 +17,11 @@ Run `audit-orchestrator` as the primary entrypoint for auditing any website for 
 and engagement problems. It coordinates:
 1. **Acquisition**: `site-acquisition/crawl.py` (robots-compliant crawler) and `render.py` (Playwright renderer).
 2. **Archetype Inference**: `machine-readability-audit/archetype.py`.
-3. **Analysis Checks**:
-   - Reach layer: `reach_checks.py` (R1, R2, R3, R5).
-   - Machine readability layer: `check_noindex.py` (R4), `check_d1.py` (D1), `check_d2.py` (D2),
-     `check_e2.py` (E2), and `check_e3.py` (E3).
+3. **Analysis Checks (20 checks across 3 tiers)**:
+   - **Tier 0 Reach Layer** (`site-acquisition/reach_checks.py`): R1 (AI crawler access), R2 (bot-walling), R3 (sitemap), R5 (canonical conflicts & dead links).
+   - **Tier 0 Machine Readability Layer** (`machine-readability-audit`): R4 (noindex), D1 (rendering divergence), D2 (image alt), D3 (semantic HTML), E1 (archetype structured data), E2 (price contradiction), E3 (quotability gap), E4 (titles & meta descriptions).
+   - **Tier 1 Trust Signals Layer** (`trust-signals-audit`): T1 (staleness & undated content), T2 (internal fact inconsistency), T3 (entity ambiguity), T4 (contact & author presence).
+   - **Tier 2 Engagement Layer** (`engagement-audit`): G1 (above-fold orientation), G2 (wayfinding defects), G3 (interstitial friction & payload), G4 (primary actions).
 4. **Synthesis**: Deterministic deduplication, root-cause clustering, recommendation generation,
    and final report validation via Pydantic.
 
@@ -79,8 +80,8 @@ Pydantic validators strictly reject incomplete candidates:
 
 ### 4. Recommendation Banks & Bidirectional Traceability
 
-- **`references/recommendation-bank.md`**: Contains deterministic remediation templates for all implemented check IDs
-  (`R1`, `R2`, `R3`, `R4`, `R5`, `D1`, `D2`, `E2`, `E3`).
+- **`references/recommendation-bank.md`**: Contains deterministic remediation templates for all 20 implemented check IDs
+  (`R1–R5`, `D1–D3`, `E1–E4`, `T1–T4`, `G1–G4`).
   - **Traceability**: Every remediation recommendation explicitly stores `linked_findings: List[str]` pointing to the findings it fixes.
   - **Orphan Rejection**: Non-proactive recommendations with empty `linked_findings`, placeholder IDs, or referencing non-existent finding IDs are strictly rejected.
 - **`references/proactive-bank.md`**: Provides archetype-conditioned proactive improvements

@@ -218,6 +218,9 @@ def build_final_report(
     # 4. Assemble and validate FinalReport model
     report = FinalReport(
         schema_version="1.0",
+        site=target_domain,
+        audited_at=completed_at,
+        counts_by_severity=by_severity,
         audit_metadata=metadata,
         summary=summary,
         findings=findings,

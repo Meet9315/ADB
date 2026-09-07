@@ -151,13 +151,41 @@ class SuggestedAction(BaseModel):
         return self
 
 
+CHECK_TITLES: Dict[str, str] = {
+    "R1": "AI Agent Access Blocked in robots.txt",
+    "R2": "Anti-Bot Wall Challenges Headless Clients",
+    "R3": "Sitemap Missing or Inaccessible",
+    "R4": "Noindex Directive on Substantive Public Page",
+    "R5": "Canonical URL Conflict or Broken Hyperlink",
+    "D1": "JavaScript Rendering Divergence Gap",
+    "D2": "Prominent Image Missing Alt Text",
+    "D3": "Semantic HTML Structure Deficient",
+    "E1": "Missing Structured Data for Page Archetype",
+    "E2": "Schema Price Contradicts Visible Page Text",
+    "E3": "Quotability Gap on Canonical Query",
+    "E4": "Duplicate Titles or Missing Meta Descriptions",
+    "T1": "Stale Commercial Claims or Undated Content",
+    "T2": "Internal Cross-Page Fact Contradiction",
+    "T3": "Ambiguous Generic Brand Entity Identity",
+    "T4": "Missing Public Contact or Organizational Presence",
+    "G1": "Above-the-Fold Orientation Failure",
+    "G2": "Wayfinding Defects or Broken Navigation Path",
+    "G3": "Intrusive Interstitial Overlay or Excessive Payload",
+    "G4": "Primary Call-to-Action Missing on Commercial Page",
+}
+
+
 class FinalFinding(BaseModel):
     """
     Deduplicated, scored, and recommendation-enriched finding for the final audit report.
+    Fulfills both the minimum finding contract floor (id, title, severity, evidence, suggested_action)
+    and the rich constitutional contract (check_id, root_cause, mechanism, etc.).
     """
     model_config = ConfigDict(extra="forbid")
 
-    id: str = Field(...)
+    id: str = Field(..., description="Unique finding ID, e.g. FINDING-001")
+    title: str = Field(..., description="Concise human-readable finding title fulfilling minimum contract floor")
+    severity: SeverityClassType = Field(..., description="Canonical severity class fulfilling minimum contract floor")
     check_id: CheckIdType = Field(...)
     page_url: str = Field(...)
     root_cause: RootCauseType = Field(...)
@@ -172,7 +200,22 @@ class FinalFinding(BaseModel):
     deduped_occurrences: int = Field(default=1, ge=1)
     affected_urls: List[str] = Field(default_factory=list)
 
-    @field_validator("id", "page_url", "mechanism", "false_positive_guard", "verification_method", mode="before")
+    @model_validator(mode="before")
+    @classmethod
+    def populate_finding_floor_fields(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            # Populate title from check_id if missing
+            if not data.get("title"):
+                cid = data.get("check_id", "")
+                data["title"] = CHECK_TITLES.get(cid, f"AI Discoverability Defect ({cid})")
+            # Populate severity from final_severity or raw_severity_class if missing
+            if not data.get("severity"):
+                data["severity"] = data.get("final_severity", data.get("raw_severity_class", "medium"))
+            if not data.get("final_severity"):
+                data["final_severity"] = data.get("severity", data.get("raw_severity_class", "medium"))
+        return data
+
+    @field_validator("id", "title", "page_url", "mechanism", "false_positive_guard", "verification_method", mode="before")
     @classmethod
     def validate_strings(cls, v: Any, info: Any) -> str:
         return _validate_non_empty_non_placeholder(info.field_name, v)
@@ -224,11 +267,15 @@ class AuditMetadata(BaseModel):
 class FinalReport(BaseModel):
     """
     Canonical audit report schema.
-    Emitted by build_report.py and verified by validate_report.py.
+    Fulfills both the minimum report contract floor (site, audited_at, counts_by_severity)
+    and the rich constitutional contract (audit_metadata, summary, findings, recommendations).
     """
     model_config = ConfigDict(extra="forbid")
 
     schema_version: str = Field(default="1.0")
+    site: str = Field(..., description="Target site domain fulfilling minimum report contract floor")
+    audited_at: str = Field(..., description="Audit timestamp fulfilling minimum report contract floor")
+    counts_by_severity: Dict[str, int] = Field(default_factory=dict, description="Summary counts by severity fulfilling minimum report contract floor")
     audit_metadata: AuditMetadata = Field(...)
     summary: SummaryCounts = Field(...)
     findings: List[FinalFinding] = Field(default_factory=list)
@@ -237,6 +284,21 @@ class FinalReport(BaseModel):
         description="Consolidated, deduplicated remediation recommendations with linked_findings traceability.",
     )
     proactive_recommendations: List[SuggestedAction] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def populate_floor_report_fields(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            meta = data.get("audit_metadata")
+            if isinstance(meta, dict):
+                if not data.get("site"):
+                    data["site"] = meta.get("target_domain", "")
+                if not data.get("audited_at"):
+                    data["audited_at"] = meta.get("completed_at", meta.get("started_at", ""))
+            summary = data.get("summary")
+            if isinstance(summary, dict) and not data.get("counts_by_severity"):
+                data["counts_by_severity"] = dict(summary.get("by_severity", {}))
+        return data
 
     @model_validator(mode="after")
     def validate_report_invariants(self) -> FinalReport:

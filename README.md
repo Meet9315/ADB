@@ -78,7 +78,7 @@ The marketplace is composed of five modular, composable skills declared in `mark
 - **E1 — Archetype Structured Data**: Validates presence of expected Schema.org entities conditioned on inferred site archetype (e.g. `Product` on Ecommerce).
 - **E2 — Schema Price Contradiction**: Detects numerical price mismatches between JSON-LD markup and visible text.
 - **E3 — Quotability Gap**: Uses deterministic canonical questions to assess whether key topics provide direct, quotable answer passages.
-- **E4 — Schema Syntax Errors**: Identifies malformed JSON-LD syntax, unclosed braces, or missing mandatory entity properties.
+- **E4 — Duplicate Titles & Missing Meta Descriptions**: Identifies missing `<title>` tags, duplicate page titles across distinct substantive URLs, and missing or duplicate meta descriptions.
 
 ### Tier 1: Trust Signals & Corroboration
 - **T1 — Staleness & Undated Content**: Detects stale temporal markers on time-sensitive claims (pricing, roadmaps) while guarding evergreen essays.

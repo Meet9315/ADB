@@ -100,6 +100,68 @@ def test_valid_final_report():
     assert report.summary.by_severity["critical"] == 1
     assert len(report.findings) == 1
 
+    # Handout minimum report contract floor assertions
+    assert report.site == "example.com"
+    assert report.audited_at == "2026-09-07T00:01:30Z"
+    assert report.counts_by_severity["critical"] == 1
+    assert report.findings[0].title == "JavaScript Rendering Divergence Gap"
+    assert report.findings[0].severity == "critical"
+    assert report.findings[0].evidence is not None
+    assert report.findings[0].suggested_action is not None
+
+
+def test_minimum_report_contract_floor():
+    """Verify that FinalReport and FinalFinding strictly provide all minimum floor contract fields."""
+    cand = CandidateFinding.model_validate(VALID_CANDIDATE)
+    action = SuggestedAction(
+        title="Fix SSR",
+        description="Fix server rendering.",
+        priority="high",
+        linked_findings=[cand.id],
+    )
+    finding = FinalFinding(
+        id=cand.id,
+        check_id=cand.check_id,
+        title="Custom Finding Title",
+        severity="high",
+        page_url=cand.page_url,
+        root_cause=cand.root_cause,
+        evidence=cand.evidence,
+        raw_severity_class=cand.raw_severity_class,
+        final_severity="high",
+        confidence=cand.confidence,
+        mechanism=cand.mechanism,
+        false_positive_guard=cand.false_positive_guard,
+        verification_method=cand.verification_method,
+        suggested_action=action,
+    )
+    report = build_final_report(
+        target_domain="floor.example.com",
+        base_url="https://floor.example.com",
+        archetype="saas",
+        is_tiny_site=False,
+        started_at="2026-09-08T00:00:00Z",
+        completed_at="2026-09-08T00:01:00Z",
+        elapsed_s=60.0,
+        findings=[finding],
+    )
+
+    report_dict = json.loads(report.to_deterministic_json())
+
+    # Top-level required floor fields: site, audited_at, counts by severity
+    assert "site" in report_dict and report_dict["site"] == "floor.example.com"
+    assert "audited_at" in report_dict and report_dict["audited_at"] == "2026-09-08T00:01:00Z"
+    assert "counts_by_severity" in report_dict
+    assert report_dict["counts_by_severity"]["high"] == 1
+
+    # Finding-level required floor fields: id, title, severity, evidence, suggested_action
+    f0 = report_dict["findings"][0]
+    assert "id" in f0 and f0["id"] == cand.id
+    assert "title" in f0 and f0["title"] == "Custom Finding Title"
+    assert "severity" in f0 and f0["severity"] == "high"
+    assert "evidence" in f0 and isinstance(f0["evidence"], dict)
+    assert "suggested_action" in f0 and isinstance(f0["suggested_action"], dict)
+
 
 # ── 2. Missing, Empty-String, and Whitespace-Only Fields ───────────────────
 

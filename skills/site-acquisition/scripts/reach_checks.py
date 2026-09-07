@@ -192,7 +192,7 @@ def check_r1(manifest: Dict) -> List[Dict]:
         "id": _make_id("R1", len(findings) + 1),
         "check_id": "R1",
         "page_url": manifest.get("base_url", manifest.get("domain", "unknown")) + "/robots.txt",
-        "root_cause": "orientation_cost",
+        "root_cause": "representation_gap",
         "evidence": {
             "type": "robots_txt_directive",
             "blocked_agents": sorted(blocked_agents),
@@ -280,7 +280,7 @@ async def _r2_async(base_url: str) -> List[Dict]:
             "id": _make_id("R2", len(findings) + 1),
             "check_id": "R2",
             "page_url": base_url,
-            "root_cause": "orientation_cost",
+            "root_cause": "representation_gap",
             "evidence": {
                 "type": "ua_differential_status",
                 "browser_ua": BROWSER_UA[:80] + "...",
@@ -322,7 +322,7 @@ async def _r2_async(base_url: str) -> List[Dict]:
                     "id": _make_id("R2", len(findings) + 1),
                     "check_id": "R2",
                     "page_url": base_url,
-                    "root_cause": "orientation_cost",
+                    "root_cause": "representation_gap",
                     "evidence": {
                         "type": "ua_differential_body",
                         "browser_ua": BROWSER_UA[:80] + "...",
@@ -401,7 +401,7 @@ def check_r3(manifest: Dict) -> List[Dict]:
             "id": _make_id("R3", len(findings) + 1),
             "check_id": "R3",
             "page_url": manifest.get("base_url", "") + "/sitemap.xml",
-            "root_cause": "orientation_cost",
+            "root_cause": "representation_gap",
             "evidence": {
                 "type": "sitemap_absent",
                 "checked_paths": ["/sitemap.xml", "/sitemap_index.xml"],
@@ -435,7 +435,7 @@ def check_r3(manifest: Dict) -> List[Dict]:
             "id": _make_id("R3", len(findings) + 1),
             "check_id": "R3",
             "page_url": manifest.get("base_url", "") + "/sitemap.xml",
-            "root_cause": "orientation_cost",
+            "root_cause": "representation_gap",
             "evidence": {
                 "type": "sitemap_fetch_error",
                 "errors": errors[:5],
@@ -475,7 +475,7 @@ def check_r3(manifest: Dict) -> List[Dict]:
             "id": _make_id("R3", len(findings) + 1),
             "check_id": "R3",
             "page_url": manifest.get("base_url", ""),
-            "root_cause": "orientation_cost",
+            "root_cause": "representation_gap",
             "evidence": {
                 "type": "pages_missing_from_sitemap",
                 "missing_page_urls": missing_urls,
@@ -551,7 +551,7 @@ def check_r5(manifest: Dict, corpus_dir: Path) -> List[Dict]:
                 "id": _make_id("R5", len(findings) + 1),
                 "check_id": "R5",
                 "page_url": page_url,
-                "root_cause": "orientation_cost",
+                "root_cause": "representation_gap",
                 "evidence": {
                     "type": "redirect_chain",
                     "requested_url": page_url,
@@ -639,7 +639,7 @@ def check_r5(manifest: Dict, corpus_dir: Path) -> List[Dict]:
                     "id": _make_id("R5", len(findings) + 1),
                     "check_id": "R5",
                     "page_url": page_url,
-                    "root_cause": "orientation_cost",
+                    "root_cause": "representation_gap",
                     "evidence": {
                         "type": "internal_link_4xx",
                         "url": page_url,

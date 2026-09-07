@@ -149,7 +149,7 @@ def check_r4(corpus_dir: Path, manifest: Optional[Dict] = None) -> List[Dict]:
                 "id": f"F-R4-{len(findings) + 1:03d}",
                 "check_id": "R4",
                 "page_url": url,
-                "root_cause": "orientation_cost",
+                "root_cause": "representation_gap",
                 "evidence": {
                     "type": "noindex_directive",
                     "source": source,
