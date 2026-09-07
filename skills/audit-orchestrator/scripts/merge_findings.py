@@ -131,6 +131,14 @@ def _make_signature(c: CandidateFinding) -> Tuple[str, ...]:
         return (cid, str(ev.get("type", "")))
     elif cid == "T4":
         return (cid, str(ev.get("type", "")))
+    elif cid == "G1":
+        return (cid, str(ev.get("type", "")), c.page_url)
+    elif cid == "G2":
+        return (cid, str(ev.get("type", "")), str(ev.get("target_url", c.page_url)))
+    elif cid == "G3":
+        return (cid, str(ev.get("type", "")), c.page_url)
+    elif cid == "G4":
+        return (cid, str(ev.get("type", "")), c.page_url)
     else:
         return (cid, c.root_cause, c.page_url)
 
@@ -529,6 +537,129 @@ def _instantiate_recommendation(c: CandidateFinding, finding_id: str = "") -> Su
             description=desc,
             code_snippet=code,
             priority=prio,
+            linked_findings=linked_findings,
+        )
+
+    elif cid == "G1":
+        unanswered = ev.get("unanswered_questions", [])
+        unanswered_str = ", ".join(q.replace("_", " ") for q in unanswered) if unanswered else "core value proposition"
+        return SuggestedAction(
+            title="Clarify Above-the-Fold Brand, Offering, and Next Steps",
+            description=(
+                f"Homepage initial viewport on {c.page_url} fails to clearly answer: {unanswered_str}. "
+                "Restructure the above-fold hero area to explicitly communicate brand identity, the core product/service "
+                "offering, and an immediate directional action."
+            ),
+            code_snippet=(
+                '<header class="hero">\n'
+                '  <h1>[Brand]: [Clear Value Proposition & Offering]</h1>\n'
+                '  <p>We provide [concise description of core service/product] for [target audience].</p>\n'
+                '  <a href="/get-started" class="cta-button">Get Started Free</a>\n'
+                '</header>'
+            ),
+            priority="medium",
+            linked_findings=linked_findings,
+        )
+
+    elif cid == "G2":
+        ev_type = ev.get("type", "wayfinding_defect")
+        target_u = ev.get("target_url", c.page_url)
+        if ev_type == "broken_internal_link":
+            status = ev.get("status_code", 404)
+            title = "Fix Broken Internal Navigation Link"
+            desc = (
+                f"Page {ev.get('source_page', c.page_url)} contains an internal link to '{target_u}' "
+                f"which returns HTTP {status}. Update or remove the dead link to eliminate user dead ends."
+            )
+            code = '<!-- Update broken link target -->\n<a href="/valid-path">Updated Destination</a>'
+            prio = "medium"
+        elif ev_type == "unreachable_utility_page":
+            util_type = ev.get("utility_type", "utility")
+            title = f"Integrate Critical {util_type.title()} Page into Site Navigation"
+            desc = (
+                f"Critical {util_type} page '{target_u}' has no navigable internal path from the homepage. "
+                f"Add prominent navigation links in the header, footer, or main menu."
+            )
+            code = f'<nav>\n  <a href="{target_u}">{util_type.title()}</a>\n</nav>'
+            prio = "medium"
+        elif ev_type == "excessive_utility_click_depth":
+            util_type = ev.get("utility_type", "utility")
+            depth = ev.get("depth", 3)
+            title = f"Reduce Click Depth for Critical {util_type.title()} Page"
+            desc = (
+                f"Critical {util_type} page '{target_u}' requires {depth} clicks from home without a direct "
+                "menu link. Add a direct link in the primary header or footer to streamline wayfinding."
+            )
+            code = f'<footer>\n  <a href="{target_u}">{util_type.title()}</a>\n</footer>'
+            prio = "low"
+        else:
+            title = "Integrate Substantive Orphan Page into Site Hierarchy"
+            desc = (
+                f"Substantive page '{target_u}' ({ev.get('word_count', 80)} words) has zero incoming internal links. "
+                "Add contextual links from relevant parent pages to make this content discoverable."
+            )
+            code = f'<a href="{target_u}">Explore Related Content</a>'
+            prio = "low"
+
+        return SuggestedAction(
+            title=title,
+            description=desc,
+            code_snippet=code,
+            priority=prio,
+            linked_findings=linked_findings,
+        )
+
+    elif cid == "G3":
+        ev_type = ev.get("type", "friction_defect")
+        if ev_type == "excessive_page_payload":
+            mb = ev.get("payload_mb", 5.0)
+            title = "Reduce Page Payload Below 5MB Budget"
+            desc = (
+                f"Page {c.page_url} transferred payload of {mb}MB exceeds the 5.0MB threshold. "
+                "Compress media assets, bundle scripts, and defer non-critical payloads."
+            )
+            code = None
+            prio = "medium"
+        elif ev_type == "media_viewport_displacement":
+            title = "Constrain Hero Media to Keep Primary Content Above the Fold"
+            desc = (
+                f"Top-of-page media on {c.page_url} exceeds 50% viewport height, pushing substantive text below the fold. "
+                "Constrain hero video/media containers to keep value proposition and headings visible on load."
+            )
+            code = ".hero-media { max-height: 45vh; }"
+            prio = "medium"
+        else:
+            title = "Remove Intrusive Content-Obscuring Modals on Load"
+            desc = (
+                f"Page {c.page_url} renders an unprompted modal covering substantive content on initial load. "
+                "Ensure page content is immediately readable and defer promotional popups to user-initiated actions."
+            )
+            code = "/* Defer or remove blocking overlay on initial load */\n.interstitial-modal { display: none; }"
+            prio = "medium"
+
+        return SuggestedAction(
+            title=title,
+            description=desc,
+            code_snippet=code,
+            priority=prio,
+            linked_findings=linked_findings,
+        )
+
+    elif cid == "G4":
+        role_label = ev.get("page_role", "page")
+        return SuggestedAction(
+            title="Introduce a Prominent Primary Call-to-Action",
+            description=(
+                f"The {role_label} '{c.page_url}' lacks a discernible primary call-to-action button or conversion link. "
+                "Add a prominent, styled call-to-action button (e.g. 'Get Started', 'Buy Now', 'Schedule Demo', 'Contact Us') "
+                "to guide users to the primary next step."
+            ),
+            code_snippet=(
+                '<div class="primary-action">\n'
+                '  <a href="/get-started" class="btn btn-primary">Get Started Free</a>\n'
+                '</div>'
+            ),
+            priority="medium",
             linked_findings=linked_findings,
         )
 

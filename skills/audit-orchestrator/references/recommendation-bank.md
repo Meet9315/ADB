@@ -346,4 +346,75 @@ Non-proactive recommendations (`is_proactive=False`) MUST specify at least one v
   </nav>
   ```
 
+---
+
+## G1 — Above-Fold Orientation Failure
+
+- **Check ID**: `G1`
+- **Root Cause**: `orientation_cost`
+- **Title**: Clarify Above-the-Fold Brand, Offering, and Next Steps
+- **Description**:
+  The initial homepage viewport fails to clearly communicate brand identity, the core product or service offering, or a directional next step. First-time human visitors decide whether to bounce within 3 seconds; cryptic buzzwords without concrete offering descriptions cause immediate orientation failure. Restructure the above-fold hero area to explicitly answer who you are, what you offer, and what action to take next.
+- **Code Snippet**:
+  ```html
+  <header class="hero">
+    <h1>[Brand]: [Clear Value Proposition & Offering]</h1>
+    <p>We provide [concise description of core service/product] for [target audience].</p>
+    <a href="/get-started" class="cta-button">Get Started Free</a>
+  </header>
+  ```
+
+---
+
+## G2 — Wayfinding Defects
+
+- **Check ID**: `G2`
+- **Root Cause**: `orientation_cost`
+- **Title**: Fix Broken Internal Links and Streamline Critical Page Wayfinding
+- **Description**:
+  The website exhibits navigational wayfinding defects, including broken internal links returning 4xx/5xx status codes, critical utility pages (pricing, contact, about) buried more than 2 clicks from home without intentional navigation, or substantive pages orphaned from the link graph. Resolve dead links, incorporate primary utility pages into header or footer navigation, and link orphan pages into the hierarchical content structure.
+- **Code Snippet**:
+  ```html
+  <header>
+    <nav>
+      <a href="/pricing">Pricing</a>
+      <a href="/about">About Us</a>
+      <a href="/contact">Contact</a>
+    </nav>
+  </header>
+  ```
+
+---
+
+## G3 — Friction & Intrusive Obstructions
+
+- **Check ID**: `G3`
+- **Root Cause**: `orientation_cost`
+- **Title**: Remove Intrusive Overlay Modals and Reduce Initial Page Payload
+- **Description**:
+  The page imposes interaction friction on initial load, such as intrusive overlay modals obscuring substantive content, transferred payload exceeding 5MB, or media blocks displacing primary content below the viewport fold. Remove unprompted lead-capture popups on initial load, optimize assets to keep payloads below 5MB, and constrain hero media so that substantive text remains visible above the fold.
+- **Code Snippet**:
+  ```css
+  /* Ensure substantive content is immediately visible on load */
+  .interstitial-modal { display: none; }
+  .hero-media { max-height: 45vh; }
+  ```
+
+---
+
+## G4 — No Discernible Primary Action
+
+- **Check ID**: `G4`
+- **Root Cause**: `statement_implicitness`
+- **Title**: Introduce a Clear and Prominent Primary Call-to-Action
+- **Description**:
+  The homepage or commercial landing page lacks a discernible primary call-to-action among intent-bearing actions (such as contact, buy, quote, book demo, sign-up, start, download, or read docs). Visitors seeking to engage or convert encounter an actionability void. Add a prominent, styled call-to-action button with a clear target destination.
+- **Code Snippet**:
+  ```html
+  <div class="primary-action">
+    <a href="/get-started" class="btn btn-primary">Get Started Free</a>
+  </div>
+  ```
+
+
 

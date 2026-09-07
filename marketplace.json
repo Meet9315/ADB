@@ -25,6 +25,11 @@
       "name": "trust-signals-audit",
       "path": "skills/trust-signals-audit",
       "description": "Audits the corpus for trust, freshness, and corroboration signals (T1 staleness, T2 fact inconsistencies, T3 entity ambiguity, and T4 missing contact/authorship)."
+    },
+    {
+      "name": "engagement-audit",
+      "path": "skills/engagement-audit",
+      "description": "Audits the corpus for human cognitive flow, orientation, wayfinding, friction, and actionability defects (G1 above-fold orientation, G2 wayfinding, G3 friction, and G4 primary actions)."
     }
   ]
 }

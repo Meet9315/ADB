@@ -31,6 +31,10 @@ CHECK_T1 = REPO_ROOT / "skills/trust-signals-audit/scripts/check_t1.py"
 CHECK_T2 = REPO_ROOT / "skills/trust-signals-audit/scripts/check_t2.py"
 CHECK_T3 = REPO_ROOT / "skills/trust-signals-audit/scripts/check_t3.py"
 CHECK_T4 = REPO_ROOT / "skills/trust-signals-audit/scripts/check_t4.py"
+CHECK_G1 = REPO_ROOT / "skills/engagement-audit/scripts/check_g1.py"
+CHECK_G2 = REPO_ROOT / "skills/engagement-audit/scripts/check_g2.py"
+CHECK_G3 = REPO_ROOT / "skills/engagement-audit/scripts/check_g3.py"
+CHECK_G4 = REPO_ROOT / "skills/engagement-audit/scripts/check_g4.py"
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
@@ -205,6 +209,59 @@ def run_t4(fixture: Path) -> list[dict]:
         return json.loads(result.stdout)
     except json.JSONDecodeError:
         return []
+
+
+def run_g1(fixture: Path) -> list[dict]:
+    corpus_dir = fixture / "pages"
+    manifest = fixture / "crawl_manifest.json"
+    result = subprocess.run(
+        [sys.executable, str(CHECK_G1), str(corpus_dir), "--manifest", str(manifest)],
+        capture_output=True, text=True,
+    )
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return []
+
+
+def run_g2(fixture: Path) -> list[dict]:
+    corpus_dir = fixture / "pages"
+    manifest = fixture / "crawl_manifest.json"
+    result = subprocess.run(
+        [sys.executable, str(CHECK_G2), str(corpus_dir), "--manifest", str(manifest)],
+        capture_output=True, text=True,
+    )
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return []
+
+
+def run_g3(fixture: Path) -> list[dict]:
+    corpus_dir = fixture / "pages"
+    manifest = fixture / "crawl_manifest.json"
+    result = subprocess.run(
+        [sys.executable, str(CHECK_G3), str(corpus_dir), "--manifest", str(manifest)],
+        capture_output=True, text=True,
+    )
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return []
+
+
+def run_g4(fixture: Path) -> list[dict]:
+    corpus_dir = fixture / "pages"
+    manifest = fixture / "crawl_manifest.json"
+    result = subprocess.run(
+        [sys.executable, str(CHECK_G4), str(corpus_dir), "--manifest", str(manifest)],
+        capture_output=True, text=True,
+    )
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return []
+
 
 
 
@@ -1030,6 +1087,316 @@ with tempfile.TemporaryDirectory() as tmp_t4_auth:
     test("T4 flags systemic anonymous publishing when >= 50% of articles on news archetype lack attribution", t4_auth_ok)
 
 
+# ===========================================================================
+# G-Series Synthetic Tests (Tier 2: Engagement Audit)
+# ===========================================================================
+
+# --- G1: Above-Fold Orientation Failure ---
+print("\n[G1-orientation] Above-fold orientation rubric tests")
+# Case A: Buzzword homepage failing "what do they offer?"
+with tempfile.TemporaryDirectory() as tmp_g1_fail:
+    tmp_g1_path = Path(tmp_g1_fail)
+    p_home = tmp_g1_path / "pages" / "home"
+    p_home.mkdir(parents=True)
+
+    html_fail = (
+        "<!DOCTYPE html><html><head><title>Acme Global Holdings</title></head><body>"
+        "<header>Acme Global</header>"
+        "<main><h1>Unleashing Synergistic Potential</h1>"
+        "<p>Harmonizing horizon vectors and empowering elevated paradigm dynamics.</p>"
+        "<nav><a href='/explore'>Explore</a></nav>"
+        "</main></body></html>"
+    )
+    (p_home / "raw.html").write_text(html_fail, encoding="utf-8")
+    (p_home / "text.txt").write_text("Acme Global Unleashing Synergistic Potential Harmonizing horizon vectors. Explore", encoding="utf-8")
+    (p_home / "meta.json").write_text(json.dumps({"url": "https://acmeglobal.example.com/", "status_code": 200, "title": "Acme Global Holdings"}), encoding="utf-8")
+
+    m_dict = {
+        "schema_version": "1.0",
+        "domain": "acmeglobal.example.com",
+        "base_url": "https://acmeglobal.example.com",
+        "crawled_pages": [{"url": "https://acmeglobal.example.com/", "slug": "home", "status_code": 200}],
+    }
+    (tmp_g1_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    g1_fail_findings = run_g1(tmp_g1_path)
+    g1_fail_ok = len(g1_fail_findings) >= 1 and "what_do_they_offer" in g1_fail_findings[0]["evidence"]["unanswered_questions"]
+    if not g1_fail_ok:
+        print(f"  FAIL [G1-fail] Expected G1 finding for uninformative buzzwords, got: {g1_fail_findings}")
+    test("G1 flags above-fold orientation failure when first-viewport text lacks grounded offering quote", g1_fail_ok)
+
+# Case B: Clear orientation homepage
+with tempfile.TemporaryDirectory() as tmp_g1_pass:
+    tmp_g1_path = Path(tmp_g1_pass)
+    p_home = tmp_g1_path / "pages" / "home"
+    p_home.mkdir(parents=True)
+
+    html_pass = (
+        "<!DOCTYPE html><html><head><title>Acme Analytics - Cloud Monitoring</title></head><body>"
+        "<header>Acme Analytics</header>"
+        "<main><h1>Cloud Monitoring Platform</h1>"
+        "<p>We provide real-time server monitoring software for DevOps engineering teams.</p>"
+        "<p><a href='/signup' class='btn'>Start Free Trial</a></p>"
+        "</main></body></html>"
+    )
+    (p_home / "raw.html").write_text(html_pass, encoding="utf-8")
+    (p_home / "text.txt").write_text("Acme Analytics Cloud Monitoring Platform We provide real-time server monitoring software for DevOps engineering teams. Start Free Trial", encoding="utf-8")
+    (p_home / "meta.json").write_text(json.dumps({"url": "https://analytics.example.com/", "status_code": 200, "title": "Acme Analytics - Cloud Monitoring"}), encoding="utf-8")
+
+    m_dict = {
+        "schema_version": "1.0",
+        "domain": "analytics.example.com",
+        "base_url": "https://analytics.example.com",
+        "crawled_pages": [{"url": "https://analytics.example.com/", "slug": "home", "status_code": 200}],
+    }
+    (tmp_g1_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    g1_pass_findings = run_g1(tmp_g1_path)
+    g1_pass_ok = len(g1_pass_findings) == 0
+    if not g1_pass_ok:
+        print(f"  FAIL [G1-pass] Expected 0 findings for clear orientation homepage, got: {g1_pass_findings}")
+    test("G1 cleanly passes when who, what, and next action are quoted from first viewport", g1_pass_ok)
+
+# Case C: Ambiguity guard (Rule 1: never guess or assume what the company probably does)
+with tempfile.TemporaryDirectory() as tmp_g1_ambig:
+    tmp_g1_path = Path(tmp_g1_ambig)
+    p_home = tmp_g1_path / "pages" / "home"
+    p_home.mkdir(parents=True)
+
+    html_ambig = (
+        "<!DOCTYPE html><html><head><title>Acme Systems</title></head><body>"
+        "<header>Acme Systems</header>"
+        "<main><h1>Modern Cloud Infrastructure</h1>"
+        "<p>Unifying enterprise scale and telemetry pipelines across all regions.</p>"
+        "<p><a href='/explore'>Explore</a></p>"
+        "</main></body></html>"
+    )
+    (p_home / "raw.html").write_text(html_ambig, encoding="utf-8")
+    (p_home / "text.txt").write_text("Acme Systems Modern Cloud Infrastructure Unifying enterprise scale and telemetry pipelines across all regions. Explore", encoding="utf-8")
+    (p_home / "meta.json").write_text(json.dumps({"url": "https://systems.example.com/", "status_code": 200, "title": "Acme Systems"}), encoding="utf-8")
+
+    m_dict = {
+        "schema_version": "1.0",
+        "domain": "systems.example.com",
+        "base_url": "https://systems.example.com",
+        "crawled_pages": [{"url": "https://systems.example.com/", "slug": "home", "status_code": 200}],
+    }
+    (tmp_g1_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    g1_ambig_findings = run_g1(tmp_g1_path)
+    g1_ambig_ok = len(g1_ambig_findings) == 0
+    if not g1_ambig_ok:
+        print(f"  FAIL [G1-ambig] Expected 0 findings due to Rule 1 ambiguity guard, got: {g1_ambig_findings}")
+    test("G1 suppresses findings when offering judgment is ambiguous per Rule 1 negative logic", g1_ambig_ok)
+
+
+# --- G2: Wayfinding Defects ---
+print("\n[G2-wayfinding] Broken internal links, utility navigation, and substantive orphans")
+with tempfile.TemporaryDirectory() as tmp_g2:
+    tmp_g2_path = Path(tmp_g2)
+    p_home = tmp_g2_path / "pages" / "home"
+    p_home.mkdir(parents=True)
+    p_orphan = tmp_g2_path / "pages" / "orphan"
+    p_orphan.mkdir(parents=True)
+
+    # Home has no link to pricing or orphan
+    (p_home / "raw.html").write_text("<html><body><header>Acme</header><main><p>Welcome to Acme.</p></main></body></html>", encoding="utf-8")
+    (p_home / "text.txt").write_text("Welcome to Acme.", encoding="utf-8")
+    (p_home / "meta.json").write_text(json.dumps({"url": "https://wayfinding.example.com/", "status_code": 200}), encoding="utf-8")
+
+    # Substantive orphan (> 80 words)
+    orphan_text = "Detailed documentation guide explaining the architecture of our platform. " * 10
+    (p_orphan / "raw.html").write_text(f"<html><body><h1>Guide</h1><p>{orphan_text}</p></body></html>", encoding="utf-8")
+    (p_orphan / "text.txt").write_text(orphan_text, encoding="utf-8")
+    (p_orphan / "meta.json").write_text(json.dumps({"url": "https://wayfinding.example.com/docs/guide", "status_code": 200}), encoding="utf-8")
+
+    m_dict = {
+        "schema_version": "1.0",
+        "domain": "wayfinding.example.com",
+        "base_url": "https://wayfinding.example.com",
+        "crawled_pages": [
+            {"url": "https://wayfinding.example.com/", "slug": "home", "status_code": 200},
+            {"url": "https://wayfinding.example.com/broken-page", "slug": "broken", "status_code": 404, "source_url": "https://wayfinding.example.com/"},
+            {"url": "https://wayfinding.example.com/pricing", "slug": "pricing", "status_code": 200, "depth": 3},
+            {"url": "https://wayfinding.example.com/docs/guide", "slug": "orphan", "status_code": 200},
+        ],
+    }
+    (tmp_g2_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    g2_findings = run_g2(tmp_g2_path)
+    g2_types = [f["evidence"]["type"] for f in g2_findings]
+    g2_ok = (
+        "broken_internal_link" in g2_types
+        and "excessive_utility_click_depth" in g2_types
+        and "substantive_orphan_page" in g2_types
+    )
+    if not g2_ok:
+        print(f"  FAIL [G2] Expected broken_internal_link, excessive_utility_click_depth, and substantive_orphan_page, got: {g2_types}")
+    test("G2 flags broken internal links, excessive utility click depth, and substantive orphan pages", g2_ok)
+
+# Intentional Nav Path Guard for G2: Depth alone is not a defect when linked in home nav
+with tempfile.TemporaryDirectory() as tmp_g2_guard:
+    tmp_g2_path = Path(tmp_g2_guard)
+    p_home = tmp_g2_path / "pages" / "home"
+    p_home.mkdir(parents=True)
+
+    # Home directly links to /pricing in navigation
+    (p_home / "raw.html").write_text("<html><body><header><nav><a href='/pricing'>Pricing</a></nav></header></body></html>", encoding="utf-8")
+    (p_home / "text.txt").write_text("Pricing", encoding="utf-8")
+    (p_home / "meta.json").write_text(json.dumps({"url": "https://guard.example.com/", "status_code": 200}), encoding="utf-8")
+
+    m_dict = {
+        "schema_version": "1.0",
+        "domain": "guard.example.com",
+        "base_url": "https://guard.example.com",
+        "crawled_pages": [
+            {"url": "https://guard.example.com/", "slug": "home", "status_code": 200},
+            {"url": "https://guard.example.com/pricing", "slug": "pricing", "status_code": 200, "depth": 3, "source_url": "https://guard.example.com/"},
+        ],
+    }
+    (tmp_g2_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    g2_guard_findings = run_g2(tmp_g2_path)
+    g2_guard_ok = len(g2_guard_findings) == 0
+    if not g2_guard_ok:
+        print(f"  FAIL [G2-guard] Expected 0 findings due to intentional nav path guard, got: {g2_guard_findings}")
+    test("G2 suppresses depth defect when utility page has an intentional home navigation path", g2_guard_ok)
+
+
+# --- G3: Friction & Intrusive Obstructions ---
+print("\n[G3-friction] Interstitials, payload ceilings, and media displacement")
+# Case A: Intrusive modal covering content on load
+with tempfile.TemporaryDirectory() as tmp_g3_modal:
+    tmp_g3_path = Path(tmp_g3_modal)
+    p_home = tmp_g3_path / "pages" / "home"
+    p_home.mkdir(parents=True)
+
+    html_modal = (
+        "<!DOCTYPE html><html><head><title>Acme Blog</title></head><body>"
+        "<div class='interstitial-modal' style='position:fixed; inset:0; z-index:9999;'><h2>Join Our Newsletter!</h2></div>"
+        "<main><h1>Article Headline</h1><p>Substantive article paragraphs describing technological trends.</p></main>"
+        "</body></html>"
+    )
+    (p_home / "raw.html").write_text(html_modal, encoding="utf-8")
+    (p_home / "meta.json").write_text(json.dumps({"url": "https://modal.example.com/", "status_code": 200}), encoding="utf-8")
+    m_dict = {"schema_version": "1.0", "domain": "modal.example.com", "crawled_pages": [{"url": "https://modal.example.com/", "slug": "home"}]}
+    (tmp_g3_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    g3_modal_findings = run_g3(tmp_g3_path)
+    g3_modal_ok = any(f["evidence"].get("type") == "intrusive_interstitial_modal" for f in g3_modal_findings)
+    if not g3_modal_ok:
+        print(f"  FAIL [G3-modal] Expected intrusive_interstitial_modal, got: {g3_modal_findings}")
+    test("G3 flags intrusive interstitial modals obscuring substantive content on load", g3_modal_ok)
+
+# Case B: Cookie / GDPR banner strictly exempted (NEVER flag legal consent dialogs)
+with tempfile.TemporaryDirectory() as tmp_g3_cookie:
+    tmp_g3_path = Path(tmp_g3_cookie)
+    p_home = tmp_g3_path / "pages" / "home"
+    p_home.mkdir(parents=True)
+
+    html_cookie = (
+        "<!DOCTYPE html><html><head><title>Acme Portal</title></head><body>"
+        "<div id='cookie-consent-banner' class='cookie-notice' style='position:fixed; inset:0; z-index:9999;'>"
+        "<p>We use cookies and similar technologies to provide privacy compliance and ensure optimal experience. Accept all cookies.</p>"
+        "<button>Accept All</button>"
+        "</div>"
+        "<main><h1>Portal Home</h1><p>Substantive portal content.</p></main>"
+        "</body></html>"
+    )
+    (p_home / "raw.html").write_text(html_cookie, encoding="utf-8")
+    (p_home / "meta.json").write_text(json.dumps({"url": "https://cookie.example.com/", "status_code": 200}), encoding="utf-8")
+    m_dict = {"schema_version": "1.0", "domain": "cookie.example.com", "crawled_pages": [{"url": "https://cookie.example.com/", "slug": "home"}]}
+    (tmp_g3_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    g3_cookie_findings = run_g3(tmp_g3_path)
+    g3_cookie_ok = len(g3_cookie_findings) == 0
+    if not g3_cookie_ok:
+        print(f"  FAIL [G3-cookie] Expected 0 findings for cookie/GDPR consent dialog, got: {g3_cookie_findings}")
+    test("G3 strictly excludes cookie banners, GDPR dialogs, and legal notices from friction findings", g3_cookie_ok)
+
+# Case C: Excessive page payload (> 5MB)
+with tempfile.TemporaryDirectory() as tmp_g3_heavy:
+    tmp_g3_path = Path(tmp_g3_heavy)
+    p_home = tmp_g3_path / "pages" / "home"
+    p_home.mkdir(parents=True)
+
+    (p_home / "raw.html").write_text("<html><body><h1>Heavy Page</h1></body></html>", encoding="utf-8")
+    (p_home / "meta.json").write_text(json.dumps({
+        "url": "https://heavy.example.com/",
+        "status_code": 200,
+        "response_headers": {"content-length": "6291456"},  # 6 MB
+    }), encoding="utf-8")
+    m_dict = {"schema_version": "1.0", "domain": "heavy.example.com", "crawled_pages": [{"url": "https://heavy.example.com/", "slug": "home"}]}
+    (tmp_g3_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    g3_heavy_findings = run_g3(tmp_g3_path)
+    g3_heavy_ok = any(f["evidence"].get("type") == "excessive_page_payload" and f["evidence"].get("payload_mb") == 6.0 for f in g3_heavy_findings)
+    if not g3_heavy_ok:
+        print(f"  FAIL [G3-heavy] Expected excessive_page_payload with 6.0MB, got: {g3_heavy_findings}")
+    test("G3 flags transferred page payload exceeding 5MB explicit deterministic ceiling", g3_heavy_ok)
+
+
+# --- G4: No Discernible Primary Action ---
+print("\n[G4-action] Primary call-to-action intent presence on commercial pages")
+# Case A: Commercial product page lacking primary CTA
+with tempfile.TemporaryDirectory() as tmp_g4_fail:
+    tmp_g4_path = Path(tmp_g4_fail)
+    p_prod = tmp_g4_path / "pages" / "product"
+    p_prod.mkdir(parents=True)
+
+    html_no_cta = (
+        "<!DOCTYPE html><html><head><title>Acme Widget Pro</title></head><body>"
+        "<header>Acme</header>"
+        "<main><h1>Acme Widget Pro</h1>"
+        "<p>The Widget Pro delivers unprecedented precision engineering and durable performance for all manufacturing operations.</p>"
+        "</main></body></html>"
+    )
+    (p_prod / "raw.html").write_text(html_no_cta, encoding="utf-8")
+    (p_prod / "text.txt").write_text("Acme Widget Pro The Widget Pro delivers unprecedented precision engineering and durable performance for all manufacturing and industrial assembly operations worldwide.", encoding="utf-8")
+    (p_prod / "meta.json").write_text(json.dumps({"url": "https://shop.example.com/products/widget-pro", "status_code": 200}), encoding="utf-8")
+    m_dict = {
+        "schema_version": "1.0",
+        "domain": "shop.example.com",
+        "crawled_pages": [{"url": "https://shop.example.com/products/widget-pro", "slug": "product", "status_code": 200}],
+    }
+    (tmp_g4_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    g4_fail_findings = run_g4(tmp_g4_path)
+    g4_fail_ok = any(f["evidence"].get("type") == "missing_primary_action" for f in g4_fail_findings)
+    if not g4_fail_ok:
+        print(f"  FAIL [G4-fail] Expected missing_primary_action on product page, got: {g4_fail_findings}")
+    test("G4 flags commercial product/landing pages with no detectable primary action", g4_fail_ok)
+
+# Case B: Non-commercial page exemption (privacy policy / blog article)
+with tempfile.TemporaryDirectory() as tmp_g4_exempt:
+    tmp_g4_path = Path(tmp_g4_exempt)
+    p_legal = tmp_g4_path / "pages" / "privacy"
+    p_legal.mkdir(parents=True)
+
+    html_legal = (
+        "<!DOCTYPE html><html><head><title>Privacy Policy</title></head><body>"
+        "<header>Acme Legal</header>"
+        "<main><h1>Privacy Policy</h1>"
+        "<p>This privacy policy outlines how Acme collects, uses, and safeguards information.</p>"
+        "</main></body></html>"
+    )
+    (p_legal / "raw.html").write_text(html_legal, encoding="utf-8")
+    (p_legal / "text.txt").write_text("Privacy Policy This privacy policy outlines how Acme collects, uses, and safeguards information.", encoding="utf-8")
+    (p_legal / "meta.json").write_text(json.dumps({"url": "https://shop.example.com/privacy", "status_code": 200}), encoding="utf-8")
+    m_dict = {
+        "schema_version": "1.0",
+        "domain": "shop.example.com",
+        "crawled_pages": [{"url": "https://shop.example.com/privacy", "slug": "privacy", "status_code": 200}],
+    }
+    (tmp_g4_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    g4_exempt_findings = run_g4(tmp_g4_path)
+    g4_exempt_ok = len(g4_exempt_findings) == 0
+    if not g4_exempt_ok:
+        print(f"  FAIL [G4-exempt] Expected 0 findings for non-commercial page, got: {g4_exempt_findings}")
+    test("G4 exempts non-commercial pages (legal, editorial, documentation) from action requirements", g4_exempt_ok)
+
+
 # --- CLEAN: All checks must produce 0 findings ---
 print("\n[clean] All checks against clean fixture — must produce 0 findings")
 fx = FIXTURES / "clean"
@@ -1047,9 +1414,13 @@ all_clean_findings.extend(run_t1(fx))
 all_clean_findings.extend(run_t2(fx))
 all_clean_findings.extend(run_t3(fx))
 all_clean_findings.extend(run_t4(fx))
+all_clean_findings.extend(run_g1(fx))
+all_clean_findings.extend(run_g2(fx))
+all_clean_findings.extend(run_g3(fx))
+all_clean_findings.extend(run_g4(fx))
 
 clean_ok = assert_zero("clean", all_clean_findings)
-test("CLEAN fixture produces 0 findings across all 16 deterministic checks (R1-R5, D1-D3, E1-E4, T1-T4)", clean_ok)
+test("CLEAN fixture produces 0 findings across all 20 deterministic checks (R1-R5, D1-D3, E1-E4, T1-T4, G1-G4)", clean_ok)
 
 # --- E3 Tiny-Site Regression Tests ---
 print("\n[e3-tiny-site-regression] Case A: Tiny clean ecommerce site (multi-page policy topics suppressed)")
