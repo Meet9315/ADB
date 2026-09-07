@@ -14,13 +14,83 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
 from models import CandidateFinding, FinalFinding, SuggestedAction  # noqa: E402
+
+
+def load_recommendation_bank(bank_path: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
+    """
+    Parse canonical action templates directly from references/recommendation-bank.md.
+    Returns a dictionary mapping check_id (e.g. 'R1', 'D1', 'E3') to template dict:
+    {
+        "title": str,
+        "root_cause": str,
+        "description_template": str,
+        "code_snippet": Optional[str],
+    }
+    """
+    if bank_path is None:
+        bank_path = _HERE.parent / "references" / "recommendation-bank.md"
+
+    bank: Dict[str, Dict[str, Any]] = {}
+    if not bank_path.exists():
+        return bank
+
+    content = bank_path.read_text(encoding="utf-8")
+    sections = re.split(r'\n(?=##\s+[A-Z0-9]+\s+—)', content)
+    for sec in sections[1:]:
+        cid_match = re.search(r'\*\*Check ID\*\*:\s*`?([A-Z0-9]+)`?', sec)
+        title_match = re.search(r'\*\*Title\*\*:\s*([^\n]+)', sec)
+        rc_match = re.search(r'\*\*Root Cause\*\*:\s*`?([^\n`]+)`?', sec)
+
+        desc_lines: List[str] = []
+        in_desc = False
+        in_snippet = False
+        snip_lines: List[str] = []
+
+        for line in sec.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("- **Description**:"):
+                in_desc = True
+                rem = stripped.replace("- **Description**:", "").strip()
+                if rem:
+                    desc_lines.append(rem)
+                continue
+            elif stripped.startswith("- **Code Snippet**:"):
+                in_desc = False
+                in_snippet = True
+                continue
+            elif stripped.startswith("- **") or stripped.startswith("---") or stripped.startswith("##"):
+                in_desc = False
+                in_snippet = False
+
+            if in_desc:
+                desc_lines.append(stripped)
+            elif in_snippet:
+                snip_lines.append(line)
+
+        snippet = "\n".join(snip_lines).strip()
+        m_code = re.search(r'```[^\n]*\n(.*?)```', snippet, re.DOTALL)
+        code_str = m_code.group(1).strip() if m_code else (snippet if snippet else None)
+
+        if cid_match and title_match:
+            cid = cid_match.group(1).strip()
+            bank[cid] = {
+                "title": title_match.group(1).strip().replace("`", ""),
+                "root_cause": rc_match.group(1).strip() if rc_match else "",
+                "description_template": " ".join(desc_lines).strip(),
+                "code_snippet": code_str,
+            }
+    return bank
+
+
+RECOMMENDATION_BANK: Dict[str, Dict[str, Any]] = load_recommendation_bank()
 
 
 def _make_signature(c: CandidateFinding) -> Tuple[str, ...]:
@@ -70,10 +140,12 @@ def _compute_final_severity(raw_severity: str, confidence: float, occurrence_cou
 
 
 def _instantiate_recommendation(c: CandidateFinding, finding_id: str = "") -> SuggestedAction:
-    """Instantiate a SuggestedAction strictly from the candidate's concrete evidence."""
+    """Instantiate a SuggestedAction strictly from canonical recommendation-bank templates and candidate evidence."""
     ev = c.evidence
     cid = c.check_id
     linked_findings = [finding_id] if finding_id else [c.id]
+    tpl = RECOMMENDATION_BANK.get(cid, {})
+    canonical_title = tpl.get("title")
 
     if cid == "R1":
         blocked = ", ".join(ev.get("blocked_agents", ["AI Crawlers"]))
@@ -258,9 +330,9 @@ def _instantiate_recommendation(c: CandidateFinding, finding_id: str = "") -> Su
 
     else:
         return SuggestedAction(
-            title=f"Resolve {c.root_cause.replace('_', ' ').title()} Issue ({cid})",
+            title=canonical_title or f"Resolve {c.root_cause.replace('_', ' ').title()} Issue ({cid})",
             description=c.mechanism,
-            code_snippet=None,
+            code_snippet=tpl.get("code_snippet"),
             priority=c.raw_severity_class,
             linked_findings=linked_findings,
         )
