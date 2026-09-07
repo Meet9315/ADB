@@ -130,7 +130,7 @@ def run_audit_pipeline(
     is_tiny = arch_res.get("is_tiny_site", False)
 
     # 4. Analysis checks
-    typer.echo("    [4/6] Executing analysis checks (R-series, D-series, E-series)...")
+    typer.echo("    [4/6] Executing analysis checks (R-series, D-series, E-series, T-series)...")
     raw_candidates: List[Dict[str, Any]] = []
 
     # Reach checks (R1, R2, R3, R5)
@@ -151,8 +151,9 @@ def run_audit_pipeline(
             except Exception:
                 pass
 
-    # Machine readability checks
+    # Machine readability and Trust signals checks
     mra_scripts = REPO_ROOT / "skills" / "machine-readability-audit" / "scripts"
+    tsa_scripts = REPO_ROOT / "skills" / "trust-signals-audit" / "scripts"
     checks = [
         mra_scripts / "check_noindex.py",  # R4
         mra_scripts / "check_d1.py",       # D1
@@ -162,6 +163,10 @@ def run_audit_pipeline(
         mra_scripts / "check_e2.py",       # E2
         mra_scripts / "check_e3.py",       # E3
         mra_scripts / "check_e4.py",       # E4
+        tsa_scripts / "check_t1.py",       # T1
+        tsa_scripts / "check_t2.py",       # T2
+        tsa_scripts / "check_t3.py",       # T3
+        tsa_scripts / "check_t4.py",       # T4
     ]
 
     for cscript in checks:

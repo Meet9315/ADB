@@ -123,6 +123,14 @@ def _make_signature(c: CandidateFinding) -> Tuple[str, ...]:
         return (cid, str(ev.get("type", "")))
     elif cid == "E4":
         return (cid, str(ev.get("type", "")))
+    elif cid == "T1":
+        return (cid, str(ev.get("type", "")), c.page_url)
+    elif cid == "T2":
+        return (cid, str(ev.get("fact_type", "")), str(ev.get("normalized_value_a", "")))
+    elif cid == "T3":
+        return (cid, str(ev.get("type", "")))
+    elif cid == "T4":
+        return (cid, str(ev.get("type", "")))
     else:
         return (cid, c.root_cause, c.page_url)
 
@@ -423,6 +431,104 @@ def _instantiate_recommendation(c: CandidateFinding, finding_id: str = "") -> Su
             description=desc,
             code_snippet=code,
             priority="low",
+            linked_findings=linked_findings,
+        )
+
+    elif cid == "T1":
+        ev_type = ev.get("type", "stale_content")
+        if "stale" in ev_type:
+            title = "Update Stale Commercial Terms and Refresh Temporal Markers"
+            desc = (
+                f"Page {c.page_url} references outdated temporal markers ('{ev.get('stale_marker', 'outdated year')}'). "
+                "Update commercial terms, pricing tables, and roadmaps to reflect current operational dates."
+            )
+            code = '<p>Pricing effective for 2026: ...</p>'
+            prio = "medium"
+        else:
+            title = "Add Publication Date or Last-Updated Timestamp"
+            desc = (
+                f"Substantive page {c.page_url} lacks any temporal anchors. "
+                "Add visible publication dates or schema.org datePublished/dateModified timestamps."
+            )
+            code = '<time datetime="2026-09-01">September 1, 2026</time>'
+            prio = "low"
+
+        return SuggestedAction(
+            title=title,
+            description=desc,
+            code_snippet=code,
+            priority=prio,
+            linked_findings=linked_findings,
+        )
+
+    elif cid == "T2":
+        fact_type = ev.get("fact_type", "contact fact").replace("_", " ")
+        raw_a = ev.get("raw_value_a", "")
+        raw_b = ev.get("raw_value_b", "")
+        url_a = ev.get("url_a", "")
+        url_b = ev.get("url_b", "")
+        desc = (
+            f"Resolve contradictory {fact_type} asserted across pages "
+            f"('{raw_a}' on {url_a} vs '{raw_b}' on {url_b}). "
+            "Establish a single canonical source of truth for repeated entity facts across all templates."
+        )
+        return SuggestedAction(
+            title=f"Harmonize Contradictory {fact_type.title()} Across Pages",
+            description=desc,
+            code_snippet=None,
+            priority="medium",
+            linked_findings=linked_findings,
+        )
+
+    elif cid == "T3":
+        brand = ev.get("brand_name", "Brand")
+        return SuggestedAction(
+            title="Disambiguate Brand Identity with Schema.org sameAs Links",
+            description=(
+                f"Disambiguate entity '{brand}' by declaring Schema.org Organization markup with verified sameAs "
+                "links to authoritative external registries (Wikidata, Crunchbase, LinkedIn, Wikipedia)."
+            ),
+            code_snippet=(
+                '{\n  "@context": "https://schema.org",\n  "@type": "Organization",\n  "name": "'
+                + brand
+                + '",\n  "sameAs": [\n    "https://www.wikidata.org/wiki/...",\n    "https://www.linkedin.com/company/..."\n  ]\n}'
+            ),
+            priority="medium",
+            linked_findings=linked_findings,
+        )
+
+    elif cid == "T4":
+        ev_type = ev.get("type", "presence_gap")
+        if "contact" in ev_type:
+            title = "Provide Authoritative Public Contact Mechanisms"
+            desc = (
+                "Website lacks discoverable contact channels. Add a dedicated /contact page with reachable email, "
+                "phone number, or active customer support channels."
+            )
+            code = '<nav><a href="/contact">Contact Us</a></nav>'
+            prio = "medium"
+        elif "about" in ev_type:
+            title = "Publish Organizational About and Background Overview"
+            desc = (
+                "Website provides no discoverable 'About' or company identity overview. Publish an /about overview "
+                "detailing entity mission, leadership, and organization background."
+            )
+            code = '<nav><a href="/about">About Us</a></nav>'
+            prio = "low"
+        else:
+            title = "Add Verified Author Attribution to Editorial Content"
+            desc = (
+                "Editorial article pages lack author bylines or Schema.org author properties. Include author attribution "
+                "to satisfy AI search engine and aggregator E-E-A-T credibility requirements."
+            )
+            code = '<span class="byline">By Author Name</span>'
+            prio = "low"
+
+        return SuggestedAction(
+            title=title,
+            description=desc,
+            code_snippet=code,
+            priority=prio,
             linked_findings=linked_findings,
         )
 

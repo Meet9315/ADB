@@ -20,6 +20,11 @@
       "name": "machine-readability-audit",
       "path": "skills/machine-readability-audit",
       "description": "Audits the corpus for structured-data, robots-directive, and metadata gaps that degrade AI agent discoverability."
+    },
+    {
+      "name": "trust-signals-audit",
+      "path": "skills/trust-signals-audit",
+      "description": "Audits the corpus for trust, freshness, and corroboration signals (T1 staleness, T2 fact inconsistencies, T3 entity ambiguity, and T4 missing contact/authorship)."
     }
   ]
 }

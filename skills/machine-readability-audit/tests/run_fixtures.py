@@ -27,6 +27,10 @@ CHECK_E1 = REPO_ROOT / "skills/machine-readability-audit/scripts/check_e1.py"
 CHECK_E2 = REPO_ROOT / "skills/machine-readability-audit/scripts/check_e2.py"
 CHECK_E3 = REPO_ROOT / "skills/machine-readability-audit/scripts/check_e3.py"
 CHECK_E4 = REPO_ROOT / "skills/machine-readability-audit/scripts/check_e4.py"
+CHECK_T1 = REPO_ROOT / "skills/trust-signals-audit/scripts/check_t1.py"
+CHECK_T2 = REPO_ROOT / "skills/trust-signals-audit/scripts/check_t2.py"
+CHECK_T3 = REPO_ROOT / "skills/trust-signals-audit/scripts/check_t3.py"
+CHECK_T4 = REPO_ROOT / "skills/trust-signals-audit/scripts/check_t4.py"
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
@@ -143,6 +147,58 @@ def run_e4(fixture: Path) -> list[dict]:
     manifest = fixture / "crawl_manifest.json"
     result = subprocess.run(
         [sys.executable, str(CHECK_E4), str(corpus_dir), "--manifest", str(manifest)],
+        capture_output=True, text=True,
+    )
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return []
+
+
+def run_t1(fixture: Path) -> list[dict]:
+    corpus_dir = fixture / "pages"
+    manifest = fixture / "crawl_manifest.json"
+    result = subprocess.run(
+        [sys.executable, str(CHECK_T1), str(corpus_dir), "--manifest", str(manifest)],
+        capture_output=True, text=True,
+    )
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return []
+
+
+def run_t2(fixture: Path) -> list[dict]:
+    corpus_dir = fixture / "pages"
+    manifest = fixture / "crawl_manifest.json"
+    result = subprocess.run(
+        [sys.executable, str(CHECK_T2), str(corpus_dir), "--manifest", str(manifest)],
+        capture_output=True, text=True,
+    )
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return []
+
+
+def run_t3(fixture: Path) -> list[dict]:
+    corpus_dir = fixture / "pages"
+    manifest = fixture / "crawl_manifest.json"
+    result = subprocess.run(
+        [sys.executable, str(CHECK_T3), str(corpus_dir), "--manifest", str(manifest)],
+        capture_output=True, text=True,
+    )
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return []
+
+
+def run_t4(fixture: Path) -> list[dict]:
+    corpus_dir = fixture / "pages"
+    manifest = fixture / "crawl_manifest.json"
+    result = subprocess.run(
+        [sys.executable, str(CHECK_T4), str(corpus_dir), "--manifest", str(manifest)],
         capture_output=True, text=True,
     )
     try:
@@ -592,6 +648,213 @@ with tempfile.TemporaryDirectory() as tmp_e4:
         print(f"  FAIL [E4] Expected duplicate_titles and missing_meta_descriptions low-severity findings, got {e4_findings}")
     test("E4 detects duplicate titles and missing meta descriptions with minor/low severity", e4_ok)
 
+# --- T1: Staleness on time-sensitive pricing vs evergreen essay ---
+print("\n[T1-staleness] Time-sensitive pricing with old date vs evergreen essay")
+with tempfile.TemporaryDirectory() as tmp_t1:
+    tmp_t1_path = Path(tmp_t1)
+    p_stale = tmp_t1_path / "pages" / "pricing"
+    p_evergreen = tmp_t1_path / "pages" / "blog"
+    p_stale.mkdir(parents=True)
+    p_evergreen.mkdir(parents=True)
+
+    text_words = "Substantive detailed information for users regarding system operations and workflow features. " * 8
+    stale_html = (
+        "<!DOCTYPE html><html><head><title>Pricing | CloudPlatform</title></head><body>"
+        "<main><h1>CloudPlatform Pricing</h1>"
+        "<p>Current pricing as of 2022: $29/mo per user for starter package.</p>"
+        f"<p>{text_words}</p>"
+        "</main></body></html>"
+    )
+    evergreen_html = (
+        "<!DOCTYPE html><html><head><title>Reflections on Distributed Architecture</title></head><body>"
+        "<article><h1>Reflections on Architecture</h1>"
+        "<p>Published on March 14, 2019 by Engineering Team.</p>"
+        f"<p>{text_words}</p>"
+        "</article></body></html>"
+    )
+    (p_stale / "raw.html").write_text(stale_html, encoding="utf-8")
+    (p_stale / "text.txt").write_text("CloudPlatform Pricing Current pricing as of 2022: $29/mo per user. " + text_words, encoding="utf-8")
+    (p_stale / "meta.json").write_text(json.dumps({"url": "https://cloud.example.com/pricing", "status_code": 200}), encoding="utf-8")
+
+    (p_evergreen / "raw.html").write_text(evergreen_html, encoding="utf-8")
+    (p_evergreen / "text.txt").write_text("Reflections on Architecture Published on March 14, 2019. " + text_words, encoding="utf-8")
+    (p_evergreen / "meta.json").write_text(json.dumps({"url": "https://cloud.example.com/blog/architecture", "status_code": 200}), encoding="utf-8")
+
+    m_dict = {
+        "schema_version": "1.0",
+        "domain": "cloud.example.com",
+        "base_url": "https://cloud.example.com",
+        "crawled_pages": [
+            {"url": "https://cloud.example.com/pricing", "slug": "pricing", "status_code": 200},
+            {"url": "https://cloud.example.com/blog/architecture", "slug": "blog", "status_code": 200},
+        ],
+    }
+    (tmp_t1_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    t1_findings = run_t1(tmp_t1_path)
+    # Stale pricing MUST trigger; evergreen blog post MUST NOT trigger
+    stale_flagged = any(f["page_url"] == "https://cloud.example.com/pricing" and f["evidence"]["type"] == "stale_time_sensitive_claim" for f in t1_findings)
+    evergreen_flagged = any(f["page_url"] == "https://cloud.example.com/blog/architecture" and "stale" in f["evidence"].get("type", "") for f in t1_findings)
+
+    t1_ok = stale_flagged and not evergreen_flagged
+    if not t1_ok:
+        print(f"  FAIL [T1] Expected stale pricing flagged and evergreen blog unflagged, got: {t1_findings}")
+    test("T1 flags stale pricing claims while correctly guarding evergreen essays against staleness", t1_ok)
+
+# --- T2: Internal Inconsistency across 3 pages with phone normalization guard ---
+print("\n[T2-inconsistency] Conflicting phone numbers with format normalization guard")
+with tempfile.TemporaryDirectory() as tmp_t2:
+    tmp_t2_path = Path(tmp_t2)
+    p1 = tmp_t2_path / "pages" / "contact"
+    p2 = tmp_t2_path / "pages" / "about"
+    p3 = tmp_t2_path / "pages" / "pricing"
+    p1.mkdir(parents=True)
+    p2.mkdir(parents=True)
+    p3.mkdir(parents=True)
+
+    text_words = "Corporate customer support and contact details for enterprise clients. " * 8
+    # Page 1: (555) 100-2000
+    (p1 / "raw.html").write_text(f"<html><body><h1>Contact</h1><p>Call us at (555) 100-2000</p><p>{text_words}</p></body></html>", encoding="utf-8")
+    (p1 / "text.txt").write_text(f"Contact Call us at (555) 100-2000 {text_words}", encoding="utf-8")
+    (p1 / "meta.json").write_text(json.dumps({"url": "https://corp.example.com/contact", "status_code": 200}), encoding="utf-8")
+
+    # Page 2: Conflicting phone (555) 999-8888
+    (p2 / "raw.html").write_text(f"<html><body><h1>About</h1><p>Support phone: (555) 999-8888</p><p>{text_words}</p></body></html>", encoding="utf-8")
+    (p2 / "text.txt").write_text(f"About Support phone: (555) 999-8888 {text_words}", encoding="utf-8")
+    (p2 / "meta.json").write_text(json.dumps({"url": "https://corp.example.com/about", "status_code": 200}), encoding="utf-8")
+
+    # Page 3: Phone with different punctuation: +1-555-100-2000 (normalizes to 5551002000, identical to Page 1)
+    (p3 / "raw.html").write_text(f"<html><body><h1>Pricing</h1><p>Sales: +1-555-100-2000</p><p>{text_words}</p></body></html>", encoding="utf-8")
+    (p3 / "text.txt").write_text(f"Pricing Sales: +1-555-100-2000 {text_words}", encoding="utf-8")
+    (p3 / "meta.json").write_text(json.dumps({"url": "https://corp.example.com/pricing", "status_code": 200}), encoding="utf-8")
+
+    m_dict = {
+        "schema_version": "1.0",
+        "domain": "corp.example.com",
+        "base_url": "https://corp.example.com",
+        "crawled_pages": [
+            {"url": "https://corp.example.com/contact", "slug": "contact", "status_code": 200},
+            {"url": "https://corp.example.com/about", "slug": "about", "status_code": 200},
+            {"url": "https://corp.example.com/pricing", "slug": "pricing", "status_code": 200},
+        ],
+    }
+    (tmp_t2_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    t2_findings = run_t2(tmp_t2_path)
+    # Must flag conflict between 5551002000 and 5559998888, but NOT between (555) 100-2000 and +1-555-100-2000
+    t2_ok = len(t2_findings) == 1 and t2_findings[0]["check_id"] == "T2"
+    if t2_ok:
+        ev = t2_findings[0]["evidence"]
+        t2_ok = (
+            ev.get("fact_type") == "telephone_number"
+            and ev.get("normalized_value_a") == "5551002000"
+            and ev.get("normalized_value_b") == "5559998888"
+        )
+    if not t2_ok:
+        print(f"  FAIL [T2] Expected 1 phone conflict between normalized numbers, got: {t2_findings}")
+    test("T2 diffs phone numbers across 3 pages while normalizing punctuation to prevent false conflicts", t2_ok)
+
+# --- T3: Entity Ambiguity (signal stacking vs proactive suggestion split) ---
+print("\n[T3-ambiguity] Generic brand name with stacked signals vs single weak signal")
+with tempfile.TemporaryDirectory() as tmp_t3_multi:
+    tmp_t3_path = Path(tmp_t3_multi)
+    p_home = tmp_t3_path / "pages" / "home"
+    p_home.mkdir(parents=True)
+
+    # Generic one-word brand name ("Summit"), no Organization sameAs, and generic buzzwords without category/geography
+    ambig_html = (
+        "<!DOCTYPE html><html><head><title>Summit</title></head><body>"
+        "<main><h1>Welcome to Summit</h1>"
+        "<p>We empower next-generation synergy across seamless frontiers. Our unified solutions optimize your vision "
+        "with end-to-end holistic paradigms for frictionless execution.</p>"
+        "</main></body></html>"
+    )
+    (p_home / "raw.html").write_text(ambig_html, encoding="utf-8")
+    (p_home / "text.txt").write_text("Welcome to Summit We empower next-generation synergy across seamless frontiers. Our unified solutions optimize your vision with end-to-end holistic paradigms for frictionless execution.", encoding="utf-8")
+    (p_home / "meta.json").write_text(json.dumps({"url": "https://summit.example.com/", "status_code": 200, "title": "Summit"}), encoding="utf-8")
+
+    m_dict = {
+        "schema_version": "1.0",
+        "domain": "summit.example.com",
+        "base_url": "https://summit.example.com",
+        "crawled_pages": [{"url": "https://summit.example.com/", "slug": "home", "status_code": 200}],
+    }
+    (tmp_t3_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    t3_multi_findings = run_t3(tmp_t3_path)
+    # Stacked signals (common brand + no sameAs + no category/geo) MUST trigger finding
+    t3_multi_ok = len(t3_multi_findings) == 1 and t3_multi_findings[0]["check_id"] == "T3"
+    if t3_multi_ok:
+        ev = t3_multi_findings[0]["evidence"]
+        t3_multi_ok = ev.get("signal_count", 0) >= 2 and ev.get("is_common_brand") is True
+    if not t3_multi_ok:
+        print(f"  FAIL [T3-multi] Expected T3 finding for stacked signals, got: {t3_multi_findings}")
+    test("T3 reports high-confidence defect finding when multiple ambiguity signals stack together", t3_multi_ok)
+
+with tempfile.TemporaryDirectory() as tmp_t3_single:
+    tmp_t3_path = Path(tmp_t3_single)
+    p_home = tmp_t3_path / "pages" / "home"
+    p_home.mkdir(parents=True)
+
+    # Distinctive multi-word brand with clear software category, but lacks sameAs (single weak signal)
+    single_html = (
+        "<!DOCTYPE html><html><head><title>FastScaleEngine - Cloud Orchestration Platform</title></head><body>"
+        "<main><h1>FastScaleEngine Software</h1>"
+        "<p>FastScaleEngine is a B2B SaaS platform for Kubernetes cluster deployment and automated scaling in Austin, Texas.</p>"
+        "</main></body></html>"
+    )
+    (p_home / "raw.html").write_text(single_html, encoding="utf-8")
+    (p_home / "text.txt").write_text("FastScaleEngine Software FastScaleEngine is a B2B SaaS platform for Kubernetes cluster deployment and automated scaling in Austin, Texas.", encoding="utf-8")
+    (p_home / "meta.json").write_text(json.dumps({"url": "https://fastscale.example.com/", "status_code": 200, "title": "FastScaleEngine"}), encoding="utf-8")
+
+    m_dict = {
+        "schema_version": "1.0",
+        "domain": "fastscale.example.com",
+        "base_url": "https://fastscale.example.com",
+        "crawled_pages": [{"url": "https://fastscale.example.com/", "slug": "home", "status_code": 200}],
+    }
+    (tmp_t3_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    t3_single_findings = run_t3(tmp_t3_path)
+    # Single weak signal MUST NOT trigger a defect finding
+    t3_single_ok = len(t3_single_findings) == 0
+    if not t3_single_ok:
+        print(f"  FAIL [T3-single] Expected 0 findings for single weak signal, got: {t3_single_findings}")
+    test("T3 false-positive guard suppresses defect finding when only one weak signal is present", t3_single_ok)
+
+# --- T4: Missing About/Contact Presence ---
+print("\n[T4-presence] Absence of contact and about presence")
+with tempfile.TemporaryDirectory() as tmp_t4:
+    tmp_t4_path = Path(tmp_t4)
+    p_landing = tmp_t4_path / "pages" / "landing"
+    p_landing.mkdir(parents=True)
+
+    landing_html = (
+        "<!DOCTYPE html><html><head><title>Generic Landing Page</title></head><body>"
+        "<main><h1>Landing Overview</h1>"
+        "<p>Generic page content that completely omits contact channels, telephone numbers, "
+        "email addresses, and about company descriptions.</p>"
+        "</main></body></html>"
+    )
+    (p_landing / "raw.html").write_text(landing_html, encoding="utf-8")
+    (p_landing / "text.txt").write_text("Landing Overview Generic page content that completely omits contact channels.", encoding="utf-8")
+    (p_landing / "meta.json").write_text(json.dumps({"url": "https://landing.example.com/", "status_code": 200}), encoding="utf-8")
+
+    m_dict = {
+        "schema_version": "1.0",
+        "domain": "landing.example.com",
+        "base_url": "https://landing.example.com",
+        "crawled_pages": [{"url": "https://landing.example.com/", "slug": "landing", "status_code": 200}],
+    }
+    (tmp_t4_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    t4_findings = run_t4(tmp_t4_path)
+    t4_types = [f["evidence"]["type"] for f in t4_findings]
+    t4_ok = "missing_contact_presence" in t4_types and "missing_about_presence" in t4_types
+    if not t4_ok:
+        print(f"  FAIL [T4] Expected missing_contact_presence and missing_about_presence, got: {t4_findings}")
+    test("T4 detects missing contact and about presence mechanisms", t4_ok)
+
 
 # --- CLEAN: All checks must produce 0 findings ---
 print("\n[clean] All checks against clean fixture — must produce 0 findings")
@@ -606,9 +869,13 @@ all_clean_findings.extend(run_e1(fx))
 all_clean_findings.extend(run_e2(fx))
 all_clean_findings.extend(run_e3(fx))
 all_clean_findings.extend(run_e4(fx))
+all_clean_findings.extend(run_t1(fx))
+all_clean_findings.extend(run_t2(fx))
+all_clean_findings.extend(run_t3(fx))
+all_clean_findings.extend(run_t4(fx))
 
 clean_ok = assert_zero("clean", all_clean_findings)
-test("CLEAN fixture produces 0 findings across all 12 deterministic checks (R1, R2, R3, R4, R5, D1, D2, D3, E1, E2, E3, E4)", clean_ok)
+test("CLEAN fixture produces 0 findings across all 16 deterministic checks (R1-R5, D1-D3, E1-E4, T1-T4)", clean_ok)
 
 # --- E3 Tiny-Site Regression Tests ---
 print("\n[e3-tiny-site-regression] Case A: Tiny clean ecommerce site (multi-page policy topics suppressed)")

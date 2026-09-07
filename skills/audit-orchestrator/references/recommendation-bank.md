@@ -265,3 +265,85 @@ Non-proactive recommendations (`is_proactive=False`) MUST specify at least one v
   </head>
   ```
 
+---
+
+## T1 — Staleness and Undated Content
+
+- **Check ID**: `T1`
+- **Root Cause**: `temporal_decay`
+- **Title**: Update Stale Time-Sensitive Content and Add Temporal Anchors
+- **Description**:
+  Time-sensitive pages reference outdated temporal markers (such as obsolete pricing years, expired roadmaps, or historical 'as of' claims), or substantive pages lack any publication or modification timestamps. AI search agents verify freshness before recommending commercial terms. Update time-sensitive claims to reflect current terms, and supply ISO timestamps via JSON-LD dateModified or visible last-updated dates.
+- **Code Snippet**:
+  ```html
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "datePublished": "2026-01-15T00:00:00Z",
+    "dateModified": "2026-09-01T12:00:00Z"
+  }
+  </script>
+  ```
+
+---
+
+## T2 — Internal Inconsistency
+
+- **Check ID**: `T2`
+- **Root Cause**: `corroboration_deficit`
+- **Title**: Harmonize Contradictory Factual Assertions Across Pages
+- **Description**:
+  Different pages on the domain assert conflicting factual values for identical entity attributes (such as contradictory phone numbers, divergent physical addresses, or widely conflicting customer proof metrics). Autonomous agents verifying entity credibility encounter conflicting corroboration and penalize factual reliability. Audit and harmonize repeated facts into a single canonical source of truth across all templates.
+- **Code Snippet**:
+  ```html
+  <footer>
+    <p>Contact Support: <a href="tel:+15551234567">(555) 123-4567</a></p>
+    <address>100 Canonical Blvd, Suite 200, San Francisco, CA</address>
+  </footer>
+  ```
+
+---
+
+## T3 — Entity Ambiguity
+
+- **Check ID**: `T3`
+- **Root Cause**: `identity_irresolution`
+- **Title**: Disambiguate Brand Identity with Schema.org sameAs Links
+- **Description**:
+  The site's brand exhibits entity ambiguity caused by a common dictionary brand name, absence of authoritative Schema.org sameAs registry links, or lack of category and geographic context on the homepage. AI answer engines and knowledge graphs struggle to disambiguate common names. Declare Schema.org Organization markup with verified sameAs URLs pointing to authoritative registries (Wikidata, Crunchbase, LinkedIn, Wikipedia).
+- **Code Snippet**:
+  ```html
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "Brand Name",
+    "url": "https://example.com",
+    "sameAs": [
+      "https://www.wikidata.org/wiki/...",
+      "https://www.linkedin.com/company/..."
+    ]
+  }
+  </script>
+  ```
+
+---
+
+## T4 — Missing About, Contact, or Authorship Presence
+
+- **Check ID**: `T4`
+- **Root Cause**: `corroboration_deficit`
+- **Title**: Provide Discoverable About, Contact, and Authorship Attribution
+- **Description**:
+  The website lacks discoverable contact channels (no contact page, mailto link, or telephone contact), provides no organizational About overview, or publishes editorial articles without author attribution. Autonomous research agents and AI assistants verify business legitimacy and E-E-A-T credentials before recommending entities. Add an explicit /contact page with reachable communication channels, an /about company overview, and clear author bylines on editorial content.
+- **Code Snippet**:
+  ```html
+  <!-- Canonical Contact & About Navigation -->
+  <nav>
+    <a href="/about">About Us</a>
+    <a href="/contact">Contact Support</a>
+  </nav>
+  ```
+
+
