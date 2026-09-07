@@ -69,10 +69,11 @@ def _compute_final_severity(raw_severity: str, confidence: float, occurrence_cou
     return raw_severity
 
 
-def _instantiate_recommendation(c: CandidateFinding) -> SuggestedAction:
+def _instantiate_recommendation(c: CandidateFinding, finding_id: str = "") -> SuggestedAction:
     """Instantiate a SuggestedAction strictly from the candidate's concrete evidence."""
     ev = c.evidence
     cid = c.check_id
+    linked_findings = [finding_id] if finding_id else [c.id]
 
     if cid == "R1":
         blocked = ", ".join(ev.get("blocked_agents", ["AI Crawlers"]))
@@ -96,6 +97,7 @@ def _instantiate_recommendation(c: CandidateFinding) -> SuggestedAction:
                 "User-agent: PerplexityBot\nAllow: /"
             ),
             priority="critical" if not is_training_only else "medium",
+            linked_findings=linked_findings,
         )
 
     elif cid == "R2":
@@ -113,6 +115,7 @@ def _instantiate_recommendation(c: CandidateFinding) -> SuggestedAction:
                 "Expression: (cf.client.bot or http.user_agent contains 'GPTBot')"
             ),
             priority="critical",
+            linked_findings=linked_findings,
         )
 
     elif cid == "R3":
@@ -127,6 +130,7 @@ def _instantiate_recommendation(c: CandidateFinding) -> SuggestedAction:
                 "Sitemap: https://example.com/sitemap.xml"
             ),
             priority="high",
+            linked_findings=linked_findings,
         )
 
     elif cid == "R4":
@@ -140,6 +144,7 @@ def _instantiate_recommendation(c: CandidateFinding) -> SuggestedAction:
             ),
             code_snippet='<meta name="robots" content="index, follow">',
             priority="high",
+            linked_findings=linked_findings,
         )
 
     elif cid == "R5":
@@ -158,6 +163,7 @@ def _instantiate_recommendation(c: CandidateFinding) -> SuggestedAction:
                     f'<meta property="og:url" content="{canon}">'
                 ),
                 priority="medium",
+                linked_findings=linked_findings,
             )
         else:
             broken = ev.get("broken_url", "")
@@ -170,6 +176,7 @@ def _instantiate_recommendation(c: CandidateFinding) -> SuggestedAction:
                 ),
                 code_snippet=None,
                 priority="medium",
+                linked_findings=linked_findings,
             )
 
     elif cid == "D1":
@@ -192,6 +199,7 @@ def _instantiate_recommendation(c: CandidateFinding) -> SuggestedAction:
                 "}"
             ),
             priority="critical" if ratio > 0.70 else "high",
+            linked_findings=linked_findings,
         )
 
     elif cid == "D2":
@@ -205,6 +213,7 @@ def _instantiate_recommendation(c: CandidateFinding) -> SuggestedAction:
             ),
             code_snippet=f'<img src="{img}" alt="Detailed description of the content depicted in this image">',
             priority="high",
+            linked_findings=linked_findings,
         )
 
     elif cid == "E2":
@@ -224,6 +233,7 @@ def _instantiate_recommendation(c: CandidateFinding) -> SuggestedAction:
                 f'"{field}": "{vvals[0] if vvals else sval}"'
             ),
             priority="critical" if field == "price" else "high",
+            linked_findings=linked_findings,
         )
 
     elif cid == "E3":
@@ -243,6 +253,7 @@ def _instantiate_recommendation(c: CandidateFinding) -> SuggestedAction:
                 f'</section>'
             ),
             priority="high" if ev.get("topic") in ("pricing_tiers", "return_refund") else "medium",
+            linked_findings=linked_findings,
         )
 
     else:
@@ -251,6 +262,7 @@ def _instantiate_recommendation(c: CandidateFinding) -> SuggestedAction:
             description=c.mechanism,
             code_snippet=None,
             priority=c.raw_severity_class,
+            linked_findings=linked_findings,
         )
 
 
@@ -282,9 +294,7 @@ def merge_candidate_findings(
         groups.setdefault(sig, []).append(c)
 
     # 3. Build FinalFinding instances
-    final_findings: List[FinalFinding] = []
-    finding_num = 1
-
+    cluster_records = []
     # Sort signature keys deterministically
     for sig in sorted(groups.keys(), key=lambda s: str(s)):
         cluster = groups[sig]
@@ -296,10 +306,21 @@ def merge_candidate_findings(
         occurrences = len(cluster)
 
         final_sev = _compute_final_severity(lead.raw_severity_class, lead.confidence, occurrences)
-        action = _instantiate_recommendation(lead)
+        cluster_records.append((lead, final_sev, occurrences, affected_urls))
+
+    # Sort clusters by severity rank (critical, high, medium, low), then confidence desc, then page_url
+    severity_rank = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    cluster_records.sort(
+        key=lambda item: (severity_rank.get(item[1], 4), -item[0].confidence, item[0].page_url)
+    )
+
+    final_findings: List[FinalFinding] = []
+    for idx, (lead, final_sev, occurrences, affected_urls) in enumerate(cluster_records, start=1):
+        fid = f"FINDING-{idx:03d}"
+        action = _instantiate_recommendation(lead, finding_id=fid)
 
         final_findings.append(FinalFinding(
-            id=f"FINDING-{finding_num:03d}",
+            id=fid,
             check_id=lead.check_id,
             page_url=lead.page_url,
             root_cause=lead.root_cause,
@@ -314,15 +335,6 @@ def merge_candidate_findings(
             deduped_occurrences=occurrences,
             affected_urls=affected_urls,
         ))
-        finding_num += 1
-
-    # Sort final findings by severity rank (critical, high, medium, low), then ID
-    severity_rank = {"critical": 0, "high": 1, "medium": 2, "low": 3}
-    final_findings.sort(key=lambda f: (severity_rank.get(f.final_severity, 4), f.id))
-
-    # Re-index IDs cleanly in final sorted order
-    for idx, f in enumerate(final_findings, start=1):
-        f.id = f"FINDING-{idx:03d}"
 
     return final_findings
 

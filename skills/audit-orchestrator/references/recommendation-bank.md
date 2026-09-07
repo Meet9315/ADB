@@ -4,6 +4,20 @@ This file defines actionable, evidence-derived remediation templates for all imp
 (`R1`, `R2`, `R3`, `R4`, `R5`, `D1`, `D2`, `E2`, `E3`).
 Every suggested action is parameterized strictly by the finding's concrete evidence.
 
+### Canonical Recommendation Contract & Traceability Guarantee
+
+Every remediation recommendation conforms to the canonical `SuggestedAction` model:
+- `id`: Unique recommendation ID (e.g. `REC-001`).
+- `title`: Non-empty, non-placeholder descriptive title.
+- `description`: Non-empty, evidence-parameterized explanation of the defect and remediation.
+- `code_snippet`: Concrete copy-pasteable configuration or markup snippet (or `None`).
+- `priority`: Severity class matching or calibrated from defect urgency (`critical`, `high`, `medium`, `low`).
+- `linked_findings`: Non-empty list of finding IDs (`["FINDING-001", ...]`) that this recommendation remediates.
+- `is_proactive`: Boolean indicating whether this is an archetype proactive suggestion (`True`) or defect remediation (`False`).
+
+**Orphan Rejection Rule**:
+Non-proactive recommendations (`is_proactive=False`) MUST specify at least one valid finding ID in `linked_findings`. Any recommendation with empty `linked_findings`, placeholder finding IDs, or referencing non-existent finding IDs is strictly rejected by Pydantic validation. Bidirectional traceability is verified at both `FinalFinding` level (`self.id in self.suggested_action.linked_findings`) and `FinalReport` level (`linked_findings ⊆ set(finding_ids)`).
+
 ---
 
 ## R1 — AI Crawlers Blocked in robots.txt

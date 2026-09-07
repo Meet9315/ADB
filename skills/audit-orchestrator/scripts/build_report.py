@@ -185,18 +185,43 @@ def build_final_report(
     for p in candidates:
         if p["topic"] not in covered_topics:
             proactive_recs.append(SuggestedAction(
+                id=f"PROACT-{len(proactive_recs) + 1:03d}",
                 title=p["title"],
                 description=p["description"],
                 code_snippet=p.get("code_snippet"),
                 priority=p["priority"],
+                linked_findings=[],
+                is_proactive=True,
             ))
 
-    # 3. Assemble and validate FinalReport model
+    # 3. Consolidate remediation recommendations with linked_findings
+    recs_map: Dict[Any, SuggestedAction] = {}
+    for f in findings:
+        act = f.suggested_action
+        key = (act.title, act.code_snippet)
+        if key in recs_map:
+            for fid in act.linked_findings:
+                if fid not in recs_map[key].linked_findings:
+                    recs_map[key].linked_findings.append(fid)
+        else:
+            recs_map[key] = SuggestedAction(
+                id=f"REC-{len(recs_map) + 1:03d}",
+                title=act.title,
+                description=act.description,
+                code_snippet=act.code_snippet,
+                priority=act.priority,
+                linked_findings=list(act.linked_findings),
+                is_proactive=False,
+            )
+    consolidated_recs = list(recs_map.values())
+
+    # 4. Assemble and validate FinalReport model
     report = FinalReport(
         schema_version="1.0",
         audit_metadata=metadata,
         summary=summary,
         findings=findings,
+        recommendations=consolidated_recs,
         proactive_recommendations=proactive_recs,
     )
 

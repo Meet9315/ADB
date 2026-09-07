@@ -116,13 +116,39 @@ class CandidateFinding(BaseModel):
 
 
 class SuggestedAction(BaseModel):
-    """Actionable remediation or proactive recommendation."""
+    """
+    Actionable remediation recommendation with explicit finding traceability.
+    """
     model_config = ConfigDict(extra="forbid")
 
+    id: Optional[str] = Field(default=None, description="Optional recommendation ID, e.g. REC-001")
     title: str = Field(..., min_length=1)
     description: str = Field(..., min_length=1)
     code_snippet: Optional[str] = None
     priority: SeverityClassType = Field(...)
+    linked_findings: List[str] = Field(
+        default_factory=list,
+        description="Explicit IDs of findings that this recommendation remediates. Must be non-empty for non-proactive recommendations.",
+    )
+    is_proactive: bool = Field(
+        default=False,
+        description="True if this recommendation is an archetype-conditioned proactive enhancement rather than a finding remediation.",
+    )
+
+    @field_validator("title", "description", mode="before")
+    @classmethod
+    def validate_strings(cls, v: Any, info: Any) -> str:
+        return _validate_non_empty_non_placeholder(info.field_name, v)
+
+    @model_validator(mode="after")
+    def validate_action_links(self) -> SuggestedAction:
+        if not self.is_proactive and not self.linked_findings:
+            raise ValueError(
+                f"Orphan recommendation '{self.title}': non-proactive recommendation must specify at least one linked finding in linked_findings"
+            )
+        for fid in self.linked_findings:
+            _validate_non_empty_non_placeholder("linked_findings", fid)
+        return self
 
 
 class FinalFinding(BaseModel):
@@ -158,6 +184,16 @@ class FinalFinding(BaseModel):
             raise ValueError("Evidence must be a non-empty dictionary")
         _recursively_validate_evidence("evidence", v)
         return v
+
+    @model_validator(mode="after")
+    def validate_finding_action_link(self) -> FinalFinding:
+        if not self.suggested_action.is_proactive:
+            if self.id not in self.suggested_action.linked_findings:
+                raise ValueError(
+                    f"Finding '{self.id}' suggested_action does not link back to this finding's ID in linked_findings: "
+                    f"{self.suggested_action.linked_findings}"
+                )
+        return self
 
 
 class SummaryCounts(BaseModel):
@@ -196,6 +232,10 @@ class FinalReport(BaseModel):
     audit_metadata: AuditMetadata = Field(...)
     summary: SummaryCounts = Field(...)
     findings: List[FinalFinding] = Field(default_factory=list)
+    recommendations: List[SuggestedAction] = Field(
+        default_factory=list,
+        description="Consolidated, deduplicated remediation recommendations with linked_findings traceability.",
+    )
     proactive_recommendations: List[SuggestedAction] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -225,6 +265,47 @@ class FinalReport(BaseModel):
             raise ValueError(
                 f"Sum of by_root_cause ({root_cause_sum}) does not match findings count ({len(self.findings)})"
             )
+
+        # 3. Auto-populate recommendations from findings if omitted
+        if not self.recommendations and self.findings:
+            recs_map: Dict[Any, SuggestedAction] = {}
+            for f in self.findings:
+                act = f.suggested_action
+                key = (act.title, act.code_snippet)
+                if key in recs_map:
+                    for fid in act.linked_findings:
+                        if fid not in recs_map[key].linked_findings:
+                            recs_map[key].linked_findings.append(fid)
+                else:
+                    recs_map[key] = SuggestedAction(
+                        id=f"REC-{len(recs_map) + 1:03d}",
+                        title=act.title,
+                        description=act.description,
+                        code_snippet=act.code_snippet,
+                        priority=act.priority,
+                        linked_findings=list(act.linked_findings),
+                        is_proactive=False,
+                    )
+            self.recommendations = list(recs_map.values())
+
+        # 4. Reject orphan recommendations & ensure linked_findings integrity
+        all_recs = list(self.recommendations)
+        for f in self.findings:
+            if f.suggested_action not in all_recs:
+                all_recs.append(f.suggested_action)
+
+        for rec in all_recs:
+            if not rec.is_proactive:
+                if not rec.linked_findings:
+                    raise ValueError(
+                        f"Orphan recommendation '{rec.title}': non-proactive recommendation must have at least one linked finding in linked_findings."
+                    )
+                for fid in rec.linked_findings:
+                    if fid not in seen_ids:
+                        raise ValueError(
+                            f"Orphan recommendation '{rec.title}': linked_findings references non-existent finding ID '{fid}'. "
+                            f"Available finding IDs in report: {sorted(seen_ids)}"
+                        )
 
         return self
 

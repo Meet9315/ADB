@@ -49,11 +49,11 @@ python scripts/audit.py validate report.json
 
 Backed by **Pydantic v2** (`pydantic==2.12.5`):
 - `CandidateFinding`: Strictly enforces the Hardened Finding Contract (all 10 fields required).
-- `SuggestedAction`: Structured recommendation (`title`, `description`, `code_snippet`, `priority`).
-- `FinalFinding`: Enriched finding with `final_severity`, `suggested_action`, `deduped_occurrences`, and `affected_urls`.
+- `SuggestedAction`: Structured recommendation (`id`, `title`, `description`, `code_snippet`, `priority`, `linked_findings`, `is_proactive`). Non-proactive recommendations MUST link to at least one finding ID; orphan recommendations are rejected.
+- `FinalFinding`: Enriched finding with `final_severity`, `suggested_action` (validated bidirectional link: finding ID must be in `suggested_action.linked_findings`), `deduped_occurrences`, and `affected_urls`.
 - `SummaryCounts`: Invariant-checked summary metrics (`total_findings`, `by_severity`, `by_root_cause`, `by_check_id`).
 - `AuditMetadata`: Target domain, base URL, inferred archetype, timestamps, and budget tracking flags.
-- `FinalReport`: Complete validated audit schema with deterministic JSON serialization (`to_deterministic_json()`).
+- `FinalReport`: Complete validated audit schema including consolidated `recommendations` and `proactive_recommendations` with deterministic JSON serialization (`to_deterministic_json()`).
 
 ### 2. Strict Contract Linting
 
@@ -77,19 +77,21 @@ Pydantic validators strictly reject incomplete candidates:
 - **Action Instantiation**: Links each finding to an actionable recommendation from `references/recommendation-bank.md`,
   parameterized strictly using the finding's concrete evidence.
 
-### 4. Recommendation Banks
+### 4. Recommendation Banks & Bidirectional Traceability
 
 - **`references/recommendation-bank.md`**: Contains deterministic remediation templates for all implemented check IDs
   (`R1`, `R2`, `R3`, `R4`, `R5`, `D1`, `D2`, `E2`, `E3`).
+  - **Traceability**: Every remediation recommendation explicitly stores `linked_findings: List[str]` pointing to the findings it fixes.
+  - **Orphan Rejection**: Non-proactive recommendations with empty `linked_findings`, placeholder IDs, or referencing non-existent finding IDs are strictly rejected.
 - **`references/proactive-bank.md`**: Provides archetype-conditioned proactive improvements
-  (e.g., `/llms.txt`, structured return policies, OpenAPI specs) added *only* when the topic is not already
-  covered by an existing audit finding.
+  (e.g., `/llms.txt`, structured return policies, OpenAPI specs) flagged with `is_proactive=True` and added *only* when the topic is not already covered by an existing audit finding.
 
 ### 5. Report Assembly & Invariant Verification (`scripts/validate_report.py`)
 
 Validates report-level invariants:
 - Zero duplicate finding IDs in the final report.
 - `summary.total_findings == len(findings) == sum(summary.by_severity.values()) == sum(summary.by_root_cause.values())`.
+- Full traceability across all recommendations in `report.recommendations`: all referenced finding IDs must exist in `report.findings`.
 - Serializes deterministically (sorted keys, stable indentation, UTF-8 encoding) ensuring byte-identical outputs.
 
 ### 6. Budget Tracking & Partial Audits
@@ -157,21 +159,38 @@ The orchestrator produces a `FinalReport` JSON matching the schema below:
       "false_positive_guard": "...",
       "verification_method": "...",
       "suggested_action": {
+        "id": "REC-001",
         "title": "Implement Server-Side Rendering (SSR)",
         "description": "...",
         "code_snippet": "...",
-        "priority": "critical"
+        "priority": "critical",
+        "linked_findings": ["FINDING-001"],
+        "is_proactive": false
       },
       "deduped_occurrences": 1,
       "affected_urls": ["https://example.com/"]
     }
   ],
+  "recommendations": [
+    {
+      "id": "REC-001",
+      "title": "Implement Server-Side Rendering (SSR)",
+      "description": "...",
+      "code_snippet": "...",
+      "priority": "critical",
+      "linked_findings": ["FINDING-001"],
+      "is_proactive": false
+    }
+  ],
   "proactive_recommendations": [
     {
+      "id": "PROACT-001",
       "title": "Deploy an /llms.txt Machine-Readable Context File",
       "description": "...",
       "code_snippet": "...",
-      "priority": "medium"
+      "priority": "medium",
+      "linked_findings": [],
+      "is_proactive": true
     }
   ]
 }

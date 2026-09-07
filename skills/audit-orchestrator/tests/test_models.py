@@ -77,6 +77,7 @@ def test_valid_final_report():
         description="Render dynamic content on the server so crawlers receive full text.",
         code_snippet="export async function getServerSideProps() { ... }",
         priority="critical",
+        linked_findings=[cand.id],
     )
     final_f = FinalFinding(
         **cand.model_dump(),
@@ -247,7 +248,10 @@ def test_duplicate_finding_ids_in_report():
     """Test that a report containing duplicate finding IDs is rejected."""
     cand = CandidateFinding.model_validate(VALID_CANDIDATE)
     action = SuggestedAction(
-        title="Action 1", description="Description 1", priority="critical"
+        title="Action 1",
+        description="Description 1",
+        priority="critical",
+        linked_findings=[cand.id],
     )
     f1 = FinalFinding(
         **cand.model_dump(),
@@ -282,7 +286,10 @@ def test_inconsistent_summary_counts():
     """Test that manually tampering with SummaryCounts causes validation failure."""
     cand = CandidateFinding.model_validate(VALID_CANDIDATE)
     action = SuggestedAction(
-        title="Action 1", description="Description 1", priority="critical"
+        title="Action 1",
+        description="Description 1",
+        priority="critical",
+        linked_findings=[cand.id],
     )
     f1 = FinalFinding(
         **cand.model_dump(),
@@ -325,6 +332,7 @@ def test_deterministic_json_serialization():
         description="Ensure dynamic text is present in server HTML.",
         code_snippet="export async function getServerSideProps() { ... }",
         priority="critical",
+        linked_findings=[cand.id],
     )
     f = FinalFinding(
         **cand.model_dump(),
@@ -389,3 +397,143 @@ def test_typer_cli_merge_and_validate(tmp_path: Path):
     )
     assert res_val.returncode == 0
     assert "VALID" in res_val.stdout
+
+
+# ── 11. Traceability & Orphan Recommendation Rejection Tests ──────────────
+
+def test_reject_orphan_recommendation_empty_linked_findings():
+    """Verify that a non-proactive SuggestedAction with empty linked_findings is rejected."""
+    with pytest.raises(ValidationError, match="Orphan recommendation"):
+        SuggestedAction(
+            title="Update robots.txt",
+            description="Allow discovery crawlers in robots.txt.",
+            priority="critical",
+            linked_findings=[],
+            is_proactive=False,
+        )
+
+
+@pytest.mark.parametrize("bad_fid", ["", "   ", "TBD", "N/A", "todo", "none"])
+def test_reject_orphan_recommendation_placeholder_linked_findings(bad_fid: str):
+    """Verify that placeholder or empty finding IDs in linked_findings are rejected."""
+    with pytest.raises(ValidationError):
+        SuggestedAction(
+            title="Update robots.txt",
+            description="Allow discovery crawlers in robots.txt.",
+            priority="critical",
+            linked_findings=[bad_fid],
+            is_proactive=False,
+        )
+
+
+def test_accept_proactive_recommendation_without_linked_findings():
+    """Verify that proactive recommendations (is_proactive=True) do not require linked findings."""
+    action = SuggestedAction(
+        title="Deploy an /llms.txt Machine-Readable Context File",
+        description="Deploy an /llms.txt endpoint describing site APIs and docs.",
+        code_snippet="# /llms.txt",
+        priority="medium",
+        linked_findings=[],
+        is_proactive=True,
+    )
+    assert action.is_proactive is True
+    assert action.linked_findings == []
+
+
+def test_final_finding_rejects_mismatched_action_link():
+    """Verify that FinalFinding enforces that its ID is in suggested_action.linked_findings."""
+    cand = CandidateFinding.model_validate(VALID_CANDIDATE)
+    action = SuggestedAction(
+        title="SSR Implementation",
+        description="Dynamic content on server.",
+        priority="critical",
+        linked_findings=["OTHER-FINDING-999"],  # Mismatched ID
+        is_proactive=False,
+    )
+    with pytest.raises(ValidationError, match="does not link back to this finding's ID"):
+        FinalFinding(
+            **cand.model_dump(),
+            final_severity="critical",
+            suggested_action=action,
+            deduped_occurrences=1,
+            affected_urls=["https://example.com/pricing"],
+        )
+
+
+def test_final_report_rejects_orphan_recommendation_nonexistent_finding_id():
+    """Verify that FinalReport rejects recommendations linking to non-existent finding IDs."""
+    cand = CandidateFinding.model_validate(VALID_CANDIDATE)
+    action = SuggestedAction(
+        title="SSR Implementation",
+        description="Dynamic content on server.",
+        priority="critical",
+        linked_findings=[cand.id],
+    )
+    f = FinalFinding(
+        **cand.model_dump(),
+        final_severity="critical",
+        suggested_action=action,
+        deduped_occurrences=1,
+        affected_urls=["https://example.com/pricing"],
+    )
+    report = build_final_report(
+        target_domain="example.com",
+        base_url="https://example.com",
+        archetype="saas",
+        is_tiny_site=False,
+        started_at="2026-09-07T00:00:00Z",
+        completed_at="2026-09-07T00:01:00Z",
+        elapsed_s=60.0,
+        findings=[f],
+    )
+    report_dict = report.model_dump()
+    # Inject an orphan recommendation referencing a non-existent finding
+    report_dict["recommendations"].append({
+        "id": "REC-999",
+        "title": "Fix Broken Links",
+        "description": "Remove dead links.",
+        "code_snippet": None,
+        "priority": "medium",
+        "linked_findings": ["FINDING-NON-EXISTENT"],
+        "is_proactive": False,
+    })
+    with pytest.raises(ValidationError, match="references non-existent finding ID"):
+        FinalReport.model_validate(report_dict)
+
+
+def test_final_report_consolidates_recommendations_and_preserves_traceability():
+    """Verify that build_final_report populates report.recommendations with linked_findings."""
+    cand = CandidateFinding.model_validate(VALID_CANDIDATE)
+    action = SuggestedAction(
+        title="SSR Implementation",
+        description="Dynamic content on server.",
+        priority="critical",
+        linked_findings=[cand.id],
+    )
+    f = FinalFinding(
+        **cand.model_dump(),
+        final_severity="critical",
+        suggested_action=action,
+        deduped_occurrences=1,
+        affected_urls=["https://example.com/pricing"],
+    )
+    report = build_final_report(
+        target_domain="example.com",
+        base_url="https://example.com",
+        archetype="saas",
+        is_tiny_site=False,
+        started_at="2026-09-07T00:00:00Z",
+        completed_at="2026-09-07T00:01:00Z",
+        elapsed_s=60.0,
+        findings=[f],
+    )
+    assert len(report.recommendations) >= 1
+    rec = report.recommendations[0]
+    assert rec.id == "REC-001"
+    assert rec.linked_findings == [cand.id]
+    assert rec.is_proactive is False
+    # Verify proactive recommendations have is_proactive=True and empty linked_findings
+    for pro in report.proactive_recommendations:
+        assert pro.is_proactive is True
+        assert pro.linked_findings == []
+
