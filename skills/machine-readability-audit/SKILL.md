@@ -167,18 +167,21 @@ Evaluates core HTML5 document landmarks and heading outline integrity on substan
 Checks whether diagnostic pages for the site's inferred archetype provide corresponding Schema.org entities:
 1. Reads primary archetype from `archetype.py`.
 2. Inspects crawled pages for archetype-diagnostic patterns:
-   - `ecommerce`: Product detail URLs (`/products/`, `/items/`, `/p/`) or pages containing both prices and buy/cart buttons.
-   - `content` / `news`: Article URLs (`/blog/`, `/posts/`, `/articles/`) or pages containing visible bylines and publication dates.
-   - `saas`: Homepage or pricing/feature endpoints (`/pricing`, `/features`).
-   - `local_business`: Contact, location, or store visit endpoints (`/contact`, `/location`, `/visit`).
-   - `corporate`: About and company profile endpoints (`/about`, `/company`).
+   - `ecommerce`: Product detail URLs (`/products/`, `/items/`, `/p/`) or pages containing both prices and buy/cart buttons specifically require `Product` or `IndividualProduct` schema (not generic `ItemList` or `Organization`). Catalog listing endpoints require `ItemList` or `Product`.
+   - `saas`: Software platform, pricing, or feature endpoints (`/`, `/pricing`, `/features`, `/product`) specifically require `SoftwareApplication`, `WebApplication`, `SaaS`, or `Product` schema (not generic `Organization` or `WebSite` which creates false negatives).
+   - `news`: News article URLs (`/news/`, `/stories/`) or pages containing bylines and publication dates specifically require `NewsArticle`, `ReportageNewsArticle`, or `Article`.
+   - `content`: Blog or publication articles (`/blog/`, `/posts/`, `/articles/`) specifically require `Article`, `BlogPosting`, or `BlogPost`.
+   - `local_business`: Contact, location, or store visit endpoints (`/contact`, `/location`, `/visit`) specifically require `LocalBusiness` (or concrete subtype).
+   - `corporate`: About and company profile endpoints (`/about`, `/company`) specifically require `Organization` or `Corporation`.
 3. Verifies presence of matching structured data (JSON-LD, Microdata, RDFa) via `structured_data.py`.
-4. Emits evidence parameterized with diagnostic and unannotated page counts:
-   `"X product-pattern pages crawled; Y lack Product/Offer structured data."`
+4. Generates multi-syntax verification commands (`curl -sL <url> | grep -E -i 'application/ld\+json|itemtype=["\']https?://schema\.org/|typeof='`) that test absence across all supported syntaxes.
+5. Emits evidence parameterized with diagnostic pattern and unannotated page counts:
+   `"X ecommerce (product_detail) diagnostic pages crawled; Y lack IndividualProduct/Product structured data."`
 
 **DO NOT FIRE (Negative Logic — E1):**
 - **Archetype Gate as False-Positive Guard**: Never demands `Product`/`Offer` schema on sites classified as `blog`, `portfolio`, `docs`, or `corporate`.
 - **Diagnostic pattern requirement**: Only fires if at least one page matches concrete, diagnostic archetype patterns. If no diagnostic pages exist, do not fire.
+- **Entity specificity**: Generic schema (e.g. `Organization` or `WebSite`) does not satisfy product or software application representation requirements, avoiding false negatives.
 - **Unknown archetype suppression**: If site archetype is `unknown` or lacks established schema definitions, do not fire.
 - **Full syntax parity**: Consumes JSON-LD, Microdata, and RDFa before declaring structured data absent.
 

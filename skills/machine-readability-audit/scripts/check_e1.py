@@ -8,9 +8,13 @@ and checks for the presence of matching schema.org structured data (JSON-LD, Mic
 
 Following the project constitution:
 - The archetype gate IS the false-positive guard: never demands Product schema for blog/docs.
+- Expected schema requirements are archetype/diagnostic-pattern specific rather than treating
+  all related types as interchangeable (e.g. ecommerce product pages specifically require Product
+  rather than being satisfied by ItemList or generic Organization).
+- Verification command corresponds to all supported syntaxes (JSON-LD, Microdata, RDFa).
 - Only fires when confidence in archetype is high and diagnostic page patterns are present.
 - Skips sites classified as 'unknown'.
-- Evidence: e.g. "X product-pattern pages crawled; 0 contain Product/Offer structured data."
+- Evidence: e.g. "X product-pattern pages crawled; Y lack Product/IndividualProduct structured data."
 - Output: JSON list of candidate findings conforming to CandidateFinding schema.
 
 Usage:
@@ -33,58 +37,66 @@ sys.path.insert(0, str(_HERE))
 import archetype  # noqa: E402
 from structured_data import extract_structured_data  # noqa: E402
 
-# Expected schema.org types by archetype
-ARCHETYPE_EXPECTED_SCHEMAS: Dict[str, Set[str]] = {
-    "ecommerce": {"Product", "Offer", "AggregateOffer", "ItemList", "IndividualProduct"},
-    "saas": {"SoftwareApplication", "WebApplication", "Organization", "TechArticle"},
-    "content": {"Article", "BlogPosting", "BlogPost", "TechArticle"},
-    "news": {"NewsArticle", "ReportageNewsArticle", "Article"},
-    "local_business": {
-        "LocalBusiness", "Restaurant", "Store", "MedicalBusiness", "Dentist",
-        "Hotel", "FoodEstablishment", "LodgingBusiness", "AutoDealer", "CleaningService",
-    },
-    "corporate": {"Organization", "Corporation"},
-}
-
-PRODUCT_PATH_RE = re.compile(r"/(?:products?|items?|goods|shop|catalog|p)/[^/]+", re.IGNORECASE)
+PRODUCT_DETAIL_PATH_RE = re.compile(r"/(?:products?|items?|goods|p)/[^/]+", re.IGNORECASE)
+CATALOG_PATH_RE = re.compile(r"/(?:catalog|collections?|shop|categories?)/?[^/]*$", re.IGNORECASE)
 ARTICLE_PATH_RE = re.compile(r"/(?:blog|posts?|articles?|stories|news|insights)/[^/]+", re.IGNORECASE)
 
 
-def _is_diagnostic_page_for_archetype(url: str, html: str, archetype_name: str) -> bool:
+def _get_diagnostic_page_expected_schemas(
+    url: str, html: str, archetype_name: str
+) -> Optional[Tuple[str, Set[str]]]:
     """
-    Check if a page exhibits concrete diagnostic patterns for the archetype
-    (e.g. product detail pattern, article pattern).
+    Determine if a page is diagnostic for the given archetype and return
+    (diagnostic_pattern_name, expected_schema_set).
+    Enforces archetype- and diagnostic-pattern-specific schema requirements rather
+    than treating broad related schema types as interchangeable.
     """
-    path = urlparse(url).path.lower()
+    path = urlparse(url).path.lower().rstrip("/")
+    if not path:
+        path = "/"
 
     if archetype_name == "ecommerce":
-        # Specific product detail page pattern
-        if PRODUCT_PATH_RE.search(path):
-            return True
-        # Or page has buy/cart buttons alongside price pattern
+        # 1. Product detail page: requires primary Product entity (not generic ItemList or Organization)
         has_price = bool(re.search(r"[$€£]\s*\d+(?:\.\d{2})?", html))
         has_buy_button = bool(re.search(r'(?:add\s+to\s+cart|buy\s+now|checkout)', html, re.IGNORECASE))
-        return has_price and has_buy_button
-
-    elif archetype_name in ("content", "news"):
-        if ARTICLE_PATH_RE.search(path):
-            return True
-        # Or has clear byline and publication date in document
-        has_byline = bool(re.search(r'class=["\'][^"\']*(?:byline|author)[^"\']*["\']', html, re.IGNORECASE))
-        has_pubdate = bool(re.search(r'class=["\'][^"\']*(?:pubdate|date|publish)[^"\']*["\']', html, re.IGNORECASE))
-        return has_byline and has_pubdate
+        if PRODUCT_DETAIL_PATH_RE.search(path) or (has_price and has_buy_button):
+            return "product_detail", {"Product", "IndividualProduct"}
+        # 2. Product catalog / collection listing
+        if CATALOG_PATH_RE.search(path):
+            return "catalog_listing", {"ItemList", "Product"}
 
     elif archetype_name == "saas":
-        # Homepage or pricing page of a confirmed SaaS site
-        return path in ("/", "", "/index.html", "/pricing", "/features")
+        # Core software offering: requires actual software/application entity,
+        # not generic Organization/WebSite which creates false negatives
+        if path in ("/", "/pricing", "/features", "/product", "/platform"):
+            return "software_offering", {"SoftwareApplication", "WebApplication", "SaaS", "Product"}
+
+    elif archetype_name == "news":
+        # News article pages: requires NewsArticle or Article
+        has_byline = bool(re.search(r'class=["\'][^"\']*(?:byline|author)[^"\']*["\']', html, re.IGNORECASE))
+        has_pubdate = bool(re.search(r'class=["\'][^"\']*(?:pubdate|date|publish)[^"\']*["\']', html, re.IGNORECASE))
+        if ARTICLE_PATH_RE.search(path) or (has_byline and has_pubdate):
+            return "news_article", {"NewsArticle", "ReportageNewsArticle", "Article"}
+
+    elif archetype_name == "content":
+        # Content / blog article pages: requires Article or BlogPosting
+        has_byline = bool(re.search(r'class=["\'][^"\']*(?:byline|author)[^"\']*["\']', html, re.IGNORECASE))
+        has_pubdate = bool(re.search(r'class=["\'][^"\']*(?:pubdate|date|publish)[^"\']*["\']', html, re.IGNORECASE))
+        if ARTICLE_PATH_RE.search(path) or (has_byline and has_pubdate):
+            return "article", {"Article", "BlogPosting", "BlogPost"}
 
     elif archetype_name == "local_business":
-        return path in ("/", "", "/contact", "/location", "/about", "/visit")
+        if path in ("/", "/contact", "/location", "/locations", "/about", "/visit"):
+            return "local_business", {
+                "LocalBusiness", "Restaurant", "Store", "MedicalBusiness", "Dentist",
+                "Hotel", "FoodEstablishment", "LodgingBusiness", "AutoDealer", "CleaningService",
+            }
 
     elif archetype_name == "corporate":
-        return path in ("/", "", "/about", "/company")
+        if path in ("/", "/about", "/company"):
+            return "corporate_identity", {"Organization", "Corporation"}
 
-    return False
+    return None
 
 
 def run_check_e1(
@@ -106,13 +118,13 @@ def run_check_e1(
         except Exception:
             pass
 
-    # Archetype Gate: Never demand structured data if site archetype is unknown
-    if primary_archetype == "unknown" or primary_archetype not in ARCHETYPE_EXPECTED_SCHEMAS:
+    # Archetype Gate: Never demand structured data if site archetype is unknown or unsupported
+    supported_archetypes = {"ecommerce", "saas", "content", "news", "local_business", "corporate"}
+    if primary_archetype == "unknown" or primary_archetype not in supported_archetypes:
         return []
 
-    expected_types = ARCHETYPE_EXPECTED_SCHEMAS[primary_archetype]
-
-    diagnostic_pages: List[Tuple[str, str, Path]] = []  # (url, html, page_dir)
+    # (url, html, pattern_name, expected_schemas)
+    diagnostic_pages: List[Tuple[str, str, str, Set[str]]] = []
 
     for page_dir in sorted(corpus_dir.iterdir()):
         if not page_dir.is_dir():
@@ -144,60 +156,69 @@ def run_check_e1(
             continue
 
         html = html_path.read_text(encoding="utf-8", errors="replace")
-        if _is_diagnostic_page_for_archetype(url, html, primary_archetype):
-            diagnostic_pages.append((url, html, page_dir))
+        diag_info = _get_diagnostic_page_expected_schemas(url, html, primary_archetype)
+        if diag_info is not None:
+            pattern_name, expected_types = diag_info
+            diagnostic_pages.append((url, html, pattern_name, expected_types))
 
     # If no diagnostic pages observed, do not fire
     if not diagnostic_pages:
         return []
 
-    # Check structured data on diagnostic pages
-    pages_lacking_schema: List[str] = []
-    for url, html, page_dir in diagnostic_pages:
-        records = extract_structured_data(html)
-        found_types = {r.type for r in records}
-        if not (found_types & expected_types):
-            pages_lacking_schema.append(url)
+    # Group diagnostic pages by pattern for precise defect reporting
+    grouped_pages: Dict[str, List[Tuple[str, str, Set[str]]]] = {}
+    for url, html, pattern_name, expected_types in diagnostic_pages:
+        grouped_pages.setdefault(pattern_name, []).append((url, html, expected_types))
 
-    # Flag when structured data is missing on diagnostic pages
-    if pages_lacking_schema:
-        primary_url = pages_lacking_schema[0]
-        expected_str = "/".join(sorted(expected_types)[:3])
-        evidence_msg = (
-            f"{len(diagnostic_pages)} {primary_archetype}-pattern pages crawled; "
-            f"{len(pages_lacking_schema)} lack {expected_str} structured data."
-        )
+    for pattern_name, p_list in sorted(grouped_pages.items()):
+        expected_types = p_list[0][2]
+        pages_lacking_schema: List[str] = []
 
-        findings.append({
-            "id": f"F-E1-{len(findings) + 1:03d}",
-            "check_id": "E1",
-            "page_url": primary_url,
-            "root_cause": "corroboration_deficit",
-            "evidence": {
-                "type": "missing_archetype_structured_data",
-                "inferred_archetype": primary_archetype,
-                "diagnostic_pages_count": len(diagnostic_pages),
-                "unannotated_pages_count": len(pages_lacking_schema),
-                "unannotated_urls": pages_lacking_schema[:5],
-                "expected_schema_types": sorted(expected_types),
-                "evidence_summary": evidence_msg,
-            },
-            "raw_severity_class": "medium",
-            "confidence": 0.88,
-            "mechanism": (
-                f"Site was classified as '{primary_archetype}', but {len(pages_lacking_schema)} of "
-                f"{len(diagnostic_pages)} diagnostic pages lack {expected_str} structured data markup. "
-                "AI search engines and assistants rely on schema.org entities to extract products, articles, "
-                "or business identities with high factual confidence. Lacking schema, assistants may fail to "
-                "surface these entities in answer cards or direct answers."
-            ),
-            "false_positive_guard": (
-                f"Archetype gate: evaluated strictly for '{primary_archetype}' schemas ({expected_str}). "
-                f"Evaluated {len(diagnostic_pages)} diagnostic pages matching verified {primary_archetype} patterns. "
-                "Extracted JSON-LD, Microdata, and RDFa before declaring schema absent."
-            ),
-            "verification_method": f"curl -s {primary_url} | grep -i 'application/ld+json'",
-        })
+        for url, html, exp in p_list:
+            records = extract_structured_data(html)
+            found_types = {r.schema_type for r in records}
+            if not (found_types & exp):
+                pages_lacking_schema.append(url)
+
+        if pages_lacking_schema:
+            primary_url = pages_lacking_schema[0]
+            expected_str = "/".join(sorted(expected_types)[:3])
+            evidence_msg = (
+                f"{len(p_list)} {primary_archetype} ({pattern_name}) diagnostic pages crawled; "
+                f"{len(pages_lacking_schema)} lack {expected_str} structured data."
+            )
+
+            findings.append({
+                "id": f"F-E1-{len(findings) + 1:03d}",
+                "check_id": "E1",
+                "page_url": primary_url,
+                "root_cause": "corroboration_deficit",
+                "evidence": {
+                    "type": "missing_archetype_structured_data",
+                    "inferred_archetype": primary_archetype,
+                    "diagnostic_pattern": pattern_name,
+                    "diagnostic_pages_count": len(p_list),
+                    "unannotated_pages_count": len(pages_lacking_schema),
+                    "unannotated_urls": pages_lacking_schema[:5],
+                    "expected_schema_types": sorted(expected_types),
+                    "evidence_summary": evidence_msg,
+                },
+                "raw_severity_class": "medium",
+                "confidence": 0.88,
+                "mechanism": (
+                    f"Site was classified as '{primary_archetype}', but {len(pages_lacking_schema)} of "
+                    f"{len(p_list)} {pattern_name} diagnostic pages lack {expected_str} structured data markup. "
+                    "AI search engines and assistants rely on schema.org entities to extract products, articles, "
+                    "or software identities with high factual confidence. Lacking schema, assistants may fail to "
+                    "surface these entities in direct answers."
+                ),
+                "false_positive_guard": (
+                    f"Archetype gate: evaluated strictly for '{primary_archetype}' {pattern_name} schemas ({expected_str}). "
+                    f"Evaluated {len(p_list)} diagnostic pages matching verified {primary_archetype} patterns. "
+                    "Extracted JSON-LD, Microdata, and RDFa across DOM before declaring schema absent."
+                ),
+                "verification_method": f"curl -sL {primary_url} | grep -E -i 'application/ld\\+json|itemtype=[\"\\']https?://schema\\.org/|typeof='",
+            })
 
     return findings
 

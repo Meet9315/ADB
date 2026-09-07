@@ -463,10 +463,18 @@ with tempfile.TemporaryDirectory() as tmp_e1:
     e1_ok = len(e1_findings) == 1 and e1_findings[0]["check_id"] == "E1"
     if e1_ok:
         ev = e1_findings[0]["evidence"]
-        e1_ok = "pattern pages crawled" in ev.get("evidence_summary", "") and ev.get("inferred_archetype") == "ecommerce"
+        vm = e1_findings[0]["verification_method"]
+        e1_ok = (
+            "diagnostic pages crawled" in ev.get("evidence_summary", "")
+            and ev.get("inferred_archetype") == "ecommerce"
+            and "Product" in ev.get("expected_schema_types", [])
+            and "application/ld\\+json" in vm
+            and "itemtype" in vm
+            and "typeof" in vm
+        )
     if not e1_ok:
         print(f"  FAIL [E1] Expected 1 E1 finding for unannotated product page, got {e1_findings}")
-    test("E1 detects missing Product/Offer schema on ecommerce product-pattern pages", e1_ok)
+    test("E1 detects missing Product schema on ecommerce product pages with multi-syntax verification", e1_ok)
 
 # --- E4: Duplicate/missing titles and meta descriptions ---
 print("\n[E4-meta-descriptions-titles] Duplicate titles and missing meta descriptions")
