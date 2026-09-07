@@ -30,12 +30,28 @@ from urllib.parse import urlparse
 
 _HERE = Path(__file__).resolve().parent
 
-# Common single-word dictionary brand names frequently suffering entity collisions
-COMMON_BRAND_NAMES: Set[str] = {
+# Legal entity indicators (corporate suffixes anchoring entity identity)
+LEGAL_ENTITY_RE = re.compile(
+    r"\b(?:inc(?:\.|\b)|llc|ltd(?:\.|\b)|corp(?:\.|\b)|corporation|co(?:\.|\b)|gmbh|ag|pty|b\.v\.|s\.a\.)",
+    re.IGNORECASE,
+)
+
+# Registered trademark / service mark symbols anchoring entity identity
+TRADEMARK_RE = re.compile(r"(?:™|®|&trade;|&reg;|&#8482;|&#174;)")
+
+# Coined tech and brand affixes indicating a distinctive coined name
+COINED_SUFFIX_RE = re.compile(
+    r"(?:ify|ly|able|tech|hub|labs?|stack|base|flow|ware|gen|ops|scale)$",
+    re.IGNORECASE,
+)
+
+# Common generic single-word dictionary vocabulary prone to entity collisions
+COMMON_GENERIC_WORDS: Set[str] = {
     "summit", "apex", "nova", "beacon", "pulse", "elevate", "velocity",
     "echo", "canvas", "prism", "horizon", "nexus", "vanguard", "catalyst",
     "orbit", "stride", "spark", "forge", "crest", "stream", "flow",
-    "haven", "anchor", "clarity", "zenith", "beacon", "titan", "matrix",
+    "haven", "anchor", "clarity", "zenith", "titan", "matrix", "surge",
+    "craft", "bridge", "venture", "arc", "origin", "pivot", "beacon",
 }
 
 # Category and geographic indicators
@@ -72,6 +88,79 @@ def _extract_brand_name(domain: str, title: str, text: str) -> str:
     clean_domain = re.sub(r"^(?:https?://)?(?:www\.)?", "", domain)
     base = clean_domain.split(".")[0]
     return base
+
+
+def _is_ambiguous_brand_corpus(
+    brand: str,
+    title: str,
+    body_text: str,
+    html: str,
+) -> Tuple[bool, List[str]]:
+    """
+    Determine whether a brand name suffers from entity ambiguity using observable corpus signals:
+    1. Single-word morphology without legal suffix or distinctive coined structure.
+    2. Lack of trademark / service mark symbols in corpus HTML.
+    3. Bare / unqualified usage in page title (no category modifier or descriptive subtitle).
+    4. Observable generic usage: word appears in lowercase in ordinary sentences within corpus text,
+       or matches common generic dictionary vocabulary.
+    """
+    brand_clean = brand.strip()
+    words = brand_clean.split()
+
+    # Multi-word brands (e.g. 'Summit Data Systems', 'FastScale Engine') provide natural disambiguation
+    if len(words) > 1:
+        return False, ["multi_word_brand"]
+
+    # Legal entity suffix present (e.g. 'Acme Corp', 'Summit LLC')
+    if LEGAL_ENTITY_RE.search(brand_clean) or LEGAL_ENTITY_RE.search(title):
+        return False, ["has_legal_entity_suffix"]
+
+    # Registered trademark / service mark symbols in HTML
+    if TRADEMARK_RE.search(html):
+        return False, ["has_trademark_symbol"]
+
+    # CamelCase coined terms (e.g. 'CloudFlare', 'FastScale', 'DataDog')
+    if re.search(r"[a-z][A-Z]", brand_clean):
+        return False, ["camel_case_coined_term"]
+
+    # Alphanumeric or hyphenated names (e.g. 'Web3', 'E-Trade')
+    if re.search(r"[\d\-]", brand_clean):
+        return False, ["alphanumeric_or_hyphenated"]
+
+    # Coined tech suffix (e.g. '-ify', '-ly', '-scale', '-base')
+    if COINED_SUFFIX_RE.search(brand_clean):
+        return False, ["coined_morpheme_suffix"]
+
+    # Check title qualification: is the title bare/unqualified?
+    title_parts = [p.strip() for p in re.split(r"[-|–—:]", title) if p.strip()]
+    bare_title = False
+    if len(title_parts) <= 1:
+        bare_title = True
+    elif len(title_parts) == 2 and any(tp.lower() in ("home", "welcome", "index", "official site") for tp in title_parts):
+        bare_title = True
+
+    brand_lower = brand_clean.lower()
+    # Observable generic usage: token appears in lowercase in body text as a common noun/verb
+    in_text_lowercase = bool(re.search(rf"\b{re.escape(brand_lower)}\b", body_text))
+
+    is_generic_vocab = (
+        brand_lower in COMMON_GENERIC_WORDS
+        or (len(brand_lower) <= 8 and in_text_lowercase)
+    )
+
+    signals: List[str] = []
+    if bare_title:
+        signals.append("bare_unqualified_title")
+    if is_generic_vocab:
+        signals.append("generic_dictionary_vocabulary")
+    if in_text_lowercase:
+        signals.append("lowercase_in_corpus_text")
+
+    # Ambiguous brand requires generic vocabulary plus bare/unqualified title or short common word
+    if is_generic_vocab and (bare_title or len(brand_lower) <= 6):
+        return True, signals
+
+    return False, signals
 
 
 def _check_organization_same_as(html: str) -> bool:
@@ -173,26 +262,22 @@ def run_check_t3(
 
     title = meta.get("title", "")
     brand = _extract_brand_name(domain, title, text)
-    brand_lower = brand.lower()
 
-    # 1. Signal 1: Common / Shared generic single-word brand name
-    is_common_brand = (
-        brand_lower in COMMON_BRAND_NAMES
-        or (len(brand.split()) == 1 and len(brand) <= 8 and brand_lower.isalpha() and brand_lower in COMMON_BRAND_NAMES)
-    )
+    # 1. Observable Corpus Signal 1: Ambiguous generic brand name
+    is_ambiguous_brand, brand_signals = _is_ambiguous_brand_corpus(brand, title, text, html)
 
-    # 2. Signal 2: Absence of Organization JSON-LD with sameAs links
+    # 2. Observable Corpus Signal 2: Absence of Organization JSON-LD with sameAs links
     has_same_as = _check_organization_same_as(html)
     lacks_same_as = not has_same_as
 
-    # 3. Signal 3: Homepage text never disambiguates category / geography
+    # 3. Observable Corpus Signal 3: Homepage text never disambiguates category / geography
     text_lower = text.lower()
     has_category = any(cat in text_lower for cat in CATEGORY_KEYWORDS)
     has_geography = bool(GEOGRAPHY_RE.search(text))
     lacks_disambiguation = not has_category and not has_geography
 
     active_signals: List[str] = []
-    if is_common_brand:
+    if is_ambiguous_brand:
         active_signals.append("common_brand_name")
     if lacks_same_as:
         active_signals.append("missing_organization_same_as")
@@ -201,9 +286,15 @@ def run_check_t3(
 
     signal_count = len(active_signals)
 
-    # FALSE-POSITIVE GUARD & SPLIT:
-    # >= 2 signals: Escalate to high-confidence DEFECT FINDING
-    if signal_count >= 2:
+    # FALSE-POSITIVE GUARD & STRICT PREREQUISITE RULE:
+    # A DEFECT FINDING strictly requires:
+    #   1. The brand itself is ambiguous (is_ambiguous_brand == True)
+    #   2. Compounded by at least one missing disambiguator (lacks_same_as or lacks_disambiguation),
+    #      yielding signal_count >= 2.
+    # If the brand is NOT ambiguous (e.g. distinctive, coined, legally suffixed, or trademarked),
+    # then missing sameAs or sparse category copy NEVER produces a defect finding. It routes
+    # exclusively as a proactive suggestion.
+    if is_ambiguous_brand and signal_count >= 2:
         findings.append({
             "id": "F-T3-001",
             "check_id": "T3",
@@ -214,29 +305,30 @@ def run_check_t3(
                 "brand_name": brand,
                 "active_signals": active_signals,
                 "signal_count": signal_count,
-                "is_common_brand": is_common_brand,
+                "is_common_brand": True,
+                "brand_signals": brand_signals,
                 "lacks_same_as": lacks_same_as,
                 "lacks_disambiguation": lacks_disambiguation,
             },
             "raw_severity_class": "medium",
-            "confidence": 0.85,
+            "confidence": 0.88,
             "mechanism": (
-                f"Entity identity for '{brand}' suffers from multiple co-occurring ambiguity signals: "
+                f"Entity identity for generic brand '{brand}' suffers from multiple co-occurring ambiguity signals: "
                 f"{', '.join(active_signals)}. Autonomous agents performing entity resolution cannot disambiguate "
                 "this site from generic counterparts without explicit sameAs authority links or category disambiguation, "
                 "leading to omitted entity citations or mistaken identity."
             ),
             "false_positive_guard": (
-                "Confidence-capped signal stacking guard: evaluated common brand name, absence of Organization sameAs, "
-                f"and lack of category/geography. Requires >= 2 co-occurring signals (observed: {signal_count}). "
-                "Single weak signals are routed as proactive suggestions rather than defect findings."
+                "Brand ambiguity prerequisite and signal stacking guard: verified that the brand is a bare single-word "
+                "generic term lacking legal entity suffix or trademark, combined with missing sameAs or lack of "
+                "category disambiguation (>= 2 signals). Distinctive, compound, or trademarked brands never trigger a defect."
             ),
             "verification_method": f"curl -sL {home_url} | grep -iE 'sameas|organization'",
         })
 
-    # == 1 signal: Emit as PROACTIVE SUGGESTION instead of a defect finding
-    elif signal_count == 1:
-        single_signal = active_signals[0]
+    # If signals are present but criteria for a defect finding are not met, route as PROACTIVE SUGGESTION
+    elif lacks_same_as or is_ambiguous_brand:
+        single_signal = active_signals[0] if active_signals else "missing_organization_same_as"
         proactive_suggestions.append({
             "id": "PROACT-T3-001",
             "title": "Add Schema.org sameAs Authority Links to Disambiguate Brand Identity",

@@ -206,7 +206,10 @@ def run_check_t4(
 
     # Flag missing Authorship on news / content sites
     if archetype_name in ("news", "content") and article_pages_count >= 2:
-        if article_pages_with_author == 0:
+        unattributed_count = article_pages_count - article_pages_with_author
+        unattributed_ratio = unattributed_count / article_pages_count
+        # Flag when at least 50% of article pages lack author attribution
+        if unattributed_count > 0 and unattributed_ratio >= 0.5:
             findings.append({
                 "id": f"F-T4-{finding_idx:03d}",
                 "check_id": "T4",
@@ -217,17 +220,21 @@ def run_check_t4(
                     "archetype": archetype_name,
                     "article_pages_count": article_pages_count,
                     "attributed_pages_count": article_pages_with_author,
+                    "unattributed_pages_count": unattributed_count,
+                    "unattributed_ratio": round(unattributed_ratio, 2),
                 },
-                "raw_severity_class": "low",
-                "confidence": 0.85,
+                "raw_severity_class": "medium" if article_pages_with_author == 0 else "low",
+                "confidence": 0.88,
                 "mechanism": (
-                    f"Site was classified as '{archetype_name}', but {article_pages_count} article pages lack author "
-                    "bylines or schema.org author attribution. Answer engines and news aggregators enforce E-E-A-T "
-                    "author credibility checks and deprioritize anonymous editorial content."
+                    f"Site was classified as '{archetype_name}', but {unattributed_count} of {article_pages_count} article "
+                    f"pages ({unattributed_ratio*100:.0f}%) lack author bylines or schema.org author attribution. "
+                    "Answer engines and news aggregators enforce E-E-A-T author credibility checks and deprioritize "
+                    "anonymous editorial content."
                 ),
                 "false_positive_guard": (
-                    f"Archetype gate: evaluated strictly for '{archetype_name}' with {article_pages_count} article pages. "
-                    "Excluded utility, marketing, and commercial pages."
+                    f"Archetype & ratio gate: evaluated strictly on '{archetype_name}' with >= 2 article pages "
+                    f"(observed: {article_pages_count}) where >= 50% lack author attribution. "
+                    "Excluded SaaS, ecommerce, documentation, and utility archetypes."
                 ),
                 "verification_method": f"curl -sL {target_url} | grep -iE 'byline|author|written-by'",
             })

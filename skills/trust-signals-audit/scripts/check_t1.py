@@ -26,13 +26,14 @@ import argparse
 import json
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 from urllib.parse import urlparse
 
-# Reference year for freshness audits (2026)
-REFERENCE_YEAR = 2026
-STALE_THRESHOLD_YEAR = REFERENCE_YEAR - 2  # <= 2024 is stale for time-sensitive claims
+def get_current_reference_year() -> int:
+    """Return the current dynamic calendar year in UTC."""
+    return datetime.now(timezone.utc).year
 
 PRICING_PATH_RE = re.compile(r"/(?:pricing|plans?|rates?|costs?|fees?|packages?)(?:/|$|\?)", re.IGNORECASE)
 TIME_SENSITIVE_PHRASES = [
@@ -128,10 +129,13 @@ def _is_time_sensitive_page(url: str, html: str, text: str) -> Tuple[bool, str]:
 def run_check_t1(
     corpus_dir: Path,
     manifest: Optional[Dict[str, Any]] = None,
+    reference_year: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """Execute T1 check across all crawled pages."""
     findings: List[Dict[str, Any]] = []
     finding_idx = 1
+    ref_year = reference_year or get_current_reference_year()
+    stale_threshold_year = ref_year - 2
 
     for page_dir in sorted(corpus_dir.iterdir()):
         if not page_dir.is_dir():
@@ -173,14 +177,13 @@ def run_check_t1(
             continue
 
         temporal_data = _extract_dates_from_page(html, text)
-        found_years = [y for y in temporal_data["found_years"] if 1990 <= y <= REFERENCE_YEAR + 1]
+        found_years = [y for y in temporal_data["found_years"] if 1990 <= y <= ref_year + 1]
 
         is_time_sensitive, context_type = _is_time_sensitive_page(url, html, text)
 
         # 1. Staleness check: ONLY fires on time-sensitive content with stale markers
         if is_time_sensitive:
-            stale_claims = [c for c in temporal_data["as_of_claims"] if c[1] <= STALE_THRESHOLD_YEAR]
-            stale_copyright = temporal_data["copyright_year"] is not None and temporal_data["copyright_year"] <= STALE_THRESHOLD_YEAR
+            stale_claims = [c for c in temporal_data["as_of_claims"] if c[1] <= stale_threshold_year]
             
             # If the page explicitly makes an 'as of [old_year]' claim or is a pricing page with only old dates
             if stale_claims:
@@ -195,8 +198,8 @@ def run_check_t1(
                         "context_type": context_type,
                         "stale_marker": claim_text,
                         "marker_year": claim_year,
-                        "reference_year": REFERENCE_YEAR,
-                        "age_years": REFERENCE_YEAR - claim_year,
+                        "reference_year": ref_year,
+                        "age_years": ref_year - claim_year,
                         "all_detected_years": found_years,
                     },
                     "raw_severity_class": "medium",
@@ -209,12 +212,12 @@ def run_check_t1(
                     ),
                     "false_positive_guard": (
                         f"Time-sensitive gate: evaluated strictly for {context_type}; evergreen articles excluded. "
-                        f"Detected claim year {claim_year} is older than freshness threshold {STALE_THRESHOLD_YEAR}."
+                        f"Detected claim year {claim_year} is older than freshness threshold {stale_threshold_year}."
                     ),
                     "verification_method": f"curl -sL {url} | grep -iE 'as of|pricing|effective|updated'",
                 })
                 finding_idx += 1
-            elif context_type == "pricing_page" and found_years and max(found_years) <= STALE_THRESHOLD_YEAR:
+            elif context_type == "pricing_page" and found_years and max(found_years) <= stale_threshold_year:
                 max_year = max(found_years)
                 findings.append({
                     "id": f"F-T1-{finding_idx:03d}",
@@ -225,19 +228,19 @@ def run_check_t1(
                         "type": "stale_pricing_page",
                         "context_type": "pricing_page",
                         "latest_detected_year": max_year,
-                        "reference_year": REFERENCE_YEAR,
-                        "age_years": REFERENCE_YEAR - max_year,
+                        "reference_year": ref_year,
+                        "age_years": ref_year - max_year,
                         "all_detected_years": found_years,
                     },
                     "raw_severity_class": "medium",
                     "confidence": 0.85,
                     "mechanism": (
                         f"Pricing page '{url}' references temporal markers no newer than {max_year} "
-                        f"(threshold: {STALE_THRESHOLD_YEAR}). AI shopping and quote agents may distrust pricing terms "
+                        f"(threshold: {stale_threshold_year}). AI shopping and quote agents may distrust pricing terms "
                         "lacking recent corroboration."
                     ),
                     "false_positive_guard": (
-                        f"Verified page path is pricing-diagnostic and newest temporal anchor {max_year} <= {STALE_THRESHOLD_YEAR}."
+                        f"Verified page path is pricing-diagnostic and newest temporal anchor {max_year} <= {stale_threshold_year}."
                     ),
                     "verification_method": f"curl -sL {url} | grep -iE '20[0-9]{{2}}'",
                 })
@@ -278,6 +281,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="T1 — Staleness and Undated Content Check")
     parser.add_argument("corpus_dir", type=Path, help="Directory containing crawled page subdirectories")
     parser.add_argument("--manifest", type=Path, default=None, help="Path to crawl_manifest.json")
+    parser.add_argument("--reference-year", type=int, default=None, help="Reference year for freshness checks (default: current UTC year)")
     args = parser.parse_args()
 
     manifest_data: Optional[Dict[str, Any]] = None
@@ -287,7 +291,7 @@ def main() -> None:
         except Exception:
             pass
 
-    findings = run_check_t1(args.corpus_dir, manifest=manifest_data)
+    findings = run_check_t1(args.corpus_dir, manifest=manifest_data, reference_year=args.reference_year)
     print(json.dumps(findings, indent=2))
 
 

@@ -712,20 +712,20 @@ with tempfile.TemporaryDirectory() as tmp_t2:
     p2.mkdir(parents=True)
     p3.mkdir(parents=True)
 
-    text_words = "Corporate customer support and contact details for enterprise clients. " * 8
+    text_words = "Corporate customer overview and operational details for enterprise clients. " * 8
     # Page 1: (555) 100-2000
-    (p1 / "raw.html").write_text(f"<html><body><h1>Contact</h1><p>Call us at (555) 100-2000</p><p>{text_words}</p></body></html>", encoding="utf-8")
-    (p1 / "text.txt").write_text(f"Contact Call us at (555) 100-2000 {text_words}", encoding="utf-8")
+    (p1 / "raw.html").write_text(f"<html><body><h1>Contact</h1><p>General inquiries: (555) 100-2000</p><p>{text_words}</p></body></html>", encoding="utf-8")
+    (p1 / "text.txt").write_text(f"Contact\nGeneral inquiries: (555) 100-2000\n{text_words}", encoding="utf-8")
     (p1 / "meta.json").write_text(json.dumps({"url": "https://corp.example.com/contact", "status_code": 200}), encoding="utf-8")
 
     # Page 2: Conflicting phone (555) 999-8888
-    (p2 / "raw.html").write_text(f"<html><body><h1>About</h1><p>Support phone: (555) 999-8888</p><p>{text_words}</p></body></html>", encoding="utf-8")
-    (p2 / "text.txt").write_text(f"About Support phone: (555) 999-8888 {text_words}", encoding="utf-8")
+    (p2 / "raw.html").write_text(f"<html><body><h1>About</h1><p>General inquiries: (555) 999-8888</p><p>{text_words}</p></body></html>", encoding="utf-8")
+    (p2 / "text.txt").write_text(f"About\nGeneral inquiries: (555) 999-8888\n{text_words}", encoding="utf-8")
     (p2 / "meta.json").write_text(json.dumps({"url": "https://corp.example.com/about", "status_code": 200}), encoding="utf-8")
 
     # Page 3: Phone with different punctuation: +1-555-100-2000 (normalizes to 5551002000, identical to Page 1)
-    (p3 / "raw.html").write_text(f"<html><body><h1>Pricing</h1><p>Sales: +1-555-100-2000</p><p>{text_words}</p></body></html>", encoding="utf-8")
-    (p3 / "text.txt").write_text(f"Pricing Sales: +1-555-100-2000 {text_words}", encoding="utf-8")
+    (p3 / "raw.html").write_text(f"<html><body><h1>Pricing</h1><p>General inquiries: +1-555-100-2000</p><p>{text_words}</p></body></html>", encoding="utf-8")
+    (p3 / "text.txt").write_text(f"Pricing\nGeneral inquiries: +1-555-100-2000\n{text_words}", encoding="utf-8")
     (p3 / "meta.json").write_text(json.dumps({"url": "https://corp.example.com/pricing", "status_code": 200}), encoding="utf-8")
 
     m_dict = {
@@ -753,6 +753,112 @@ with tempfile.TemporaryDirectory() as tmp_t2:
     if not t2_ok:
         print(f"  FAIL [T2] Expected 1 phone conflict between normalized numbers, got: {t2_findings}")
     test("T2 diffs phone numbers across 3 pages while normalizing punctuation to prevent false conflicts", t2_ok)
+
+# --- T2: Physical Address Conflict across pages ---
+print("\n[T2-address-conflict] Conflicting street addresses across pages")
+with tempfile.TemporaryDirectory() as tmp_t2_addr:
+    tmp_t2_path = Path(tmp_t2_addr)
+    p1 = tmp_t2_path / "pages" / "contact"
+    p2 = tmp_t2_path / "pages" / "about"
+    p1.mkdir(parents=True)
+    p2.mkdir(parents=True)
+
+    (p1 / "raw.html").write_text("<html><body><h1>Contact Us</h1><p>Our headquarters: 100 Main Street, Austin, TX 78701</p></body></html>", encoding="utf-8")
+    (p1 / "text.txt").write_text("Contact Us\nOur headquarters: 100 Main Street, Austin, TX 78701", encoding="utf-8")
+    (p1 / "meta.json").write_text(json.dumps({"url": "https://corp.example.com/contact", "status_code": 200}), encoding="utf-8")
+
+    (p2 / "raw.html").write_text("<html><body><h1>About Us</h1><p>Visit our corporate office at 500 Market Boulevard, San Francisco, CA 94105</p></body></html>", encoding="utf-8")
+    (p2 / "text.txt").write_text("About Us\nVisit our corporate office at 500 Market Boulevard, San Francisco, CA 94105", encoding="utf-8")
+    (p2 / "meta.json").write_text(json.dumps({"url": "https://corp.example.com/about", "status_code": 200}), encoding="utf-8")
+
+    m_dict = {
+        "schema_version": "1.0",
+        "domain": "corp.example.com",
+        "base_url": "https://corp.example.com",
+        "crawled_pages": [
+            {"url": "https://corp.example.com/contact", "slug": "contact", "status_code": 200},
+            {"url": "https://corp.example.com/about", "slug": "about", "status_code": 200},
+        ],
+    }
+    (tmp_t2_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    t2_addr_findings = run_t2(tmp_t2_path)
+    t2_addr_ok = len(t2_addr_findings) == 1 and t2_addr_findings[0]["evidence"].get("fact_type") == "physical_address"
+    if not t2_addr_ok:
+        print(f"  FAIL [T2-address-conflict] Expected 1 physical_address conflict, got: {t2_addr_findings}")
+    test("T2 detects contradictory physical street addresses asserted across pages", t2_addr_ok)
+
+# --- T2: Address Normalization & Unit Extension Guard ---
+print("\n[T2-address-guard] Address normalization (St vs Street) and Suite addition guard")
+with tempfile.TemporaryDirectory() as tmp_t2_guard:
+    tmp_t2_path = Path(tmp_t2_guard)
+    p1 = tmp_t2_path / "pages" / "contact"
+    p2 = tmp_t2_path / "pages" / "about"
+    p1.mkdir(parents=True)
+    p2.mkdir(parents=True)
+
+    # Page 1: 100 Main St, Suite 400, Austin, TX
+    (p1 / "raw.html").write_text("<html><body><h1>Contact</h1><p>Office: 100 Main St, Suite 400, Austin, TX 78701</p></body></html>", encoding="utf-8")
+    (p1 / "text.txt").write_text("Contact\nOffice: 100 Main St, Suite 400, Austin, TX 78701", encoding="utf-8")
+    (p1 / "meta.json").write_text(json.dumps({"url": "https://corp.example.com/contact", "status_code": 200}), encoding="utf-8")
+
+    # Page 2: 100 Main Street, Austin, TX (different abbreviation, no suite -> same physical building)
+    (p2 / "raw.html").write_text("<html><body><h1>About</h1><p>HQ: 100 Main Street, Austin, TX 78701</p></body></html>", encoding="utf-8")
+    (p2 / "text.txt").write_text("About\nHQ: 100 Main Street, Austin, TX 78701", encoding="utf-8")
+    (p2 / "meta.json").write_text(json.dumps({"url": "https://corp.example.com/about", "status_code": 200}), encoding="utf-8")
+
+    m_dict = {
+        "schema_version": "1.0",
+        "domain": "corp.example.com",
+        "base_url": "https://corp.example.com",
+        "crawled_pages": [
+            {"url": "https://corp.example.com/contact", "slug": "contact", "status_code": 200},
+            {"url": "https://corp.example.com/about", "slug": "about", "status_code": 200},
+        ],
+    }
+    (tmp_t2_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    t2_guard_findings = run_t2(tmp_t2_path)
+    t2_guard_ok = len(t2_guard_findings) == 0
+    if not t2_guard_ok:
+        print(f"  FAIL [T2-address-guard] Expected 0 findings for normalized address/suite extension, got: {t2_guard_findings}")
+    test("T2 address guard normalizes abbreviations and excludes unit extensions from false conflicts", t2_guard_ok)
+
+# --- T2: Department Phone Role Separation Guard ---
+print("\n[T2-department-guard] Distinct phone numbers for different departments do not conflict")
+with tempfile.TemporaryDirectory() as tmp_t2_dept:
+    tmp_t2_path = Path(tmp_t2_dept)
+    p1 = tmp_t2_path / "pages" / "sales"
+    p2 = tmp_t2_path / "pages" / "support"
+    p1.mkdir(parents=True)
+    p2.mkdir(parents=True)
+
+    # Page 1: Sales department phone
+    (p1 / "raw.html").write_text("<html><body><h1>Sales</h1><p>Sales: (555) 111-2222</p></body></html>", encoding="utf-8")
+    (p1 / "text.txt").write_text("Sales\nSales: (555) 111-2222", encoding="utf-8")
+    (p1 / "meta.json").write_text(json.dumps({"url": "https://corp.example.com/sales", "status_code": 200}), encoding="utf-8")
+
+    # Page 2: Support department phone (different number, but different department)
+    (p2 / "raw.html").write_text("<html><body><h1>Support</h1><p>Support: (555) 333-4444</p></body></html>", encoding="utf-8")
+    (p2 / "text.txt").write_text("Support\nSupport: (555) 333-4444", encoding="utf-8")
+    (p2 / "meta.json").write_text(json.dumps({"url": "https://corp.example.com/support", "status_code": 200}), encoding="utf-8")
+
+    m_dict = {
+        "schema_version": "1.0",
+        "domain": "corp.example.com",
+        "base_url": "https://corp.example.com",
+        "crawled_pages": [
+            {"url": "https://corp.example.com/sales", "slug": "sales", "status_code": 200},
+            {"url": "https://corp.example.com/support", "slug": "support", "status_code": 200},
+        ],
+    }
+    (tmp_t2_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    t2_dept_findings = run_t2(tmp_t2_path)
+    t2_dept_ok = len(t2_dept_findings) == 0
+    if not t2_dept_ok:
+        print(f"  FAIL [T2-department-guard] Expected 0 findings for different departments, got: {t2_dept_findings}")
+    test("T2 department guard permits distinct phone numbers for different departments without false conflict", t2_dept_ok)
 
 # --- T3: Entity Ambiguity (signal stacking vs proactive suggestion split) ---
 print("\n[T3-ambiguity] Generic brand name with stacked signals vs single weak signal")
@@ -822,6 +928,38 @@ with tempfile.TemporaryDirectory() as tmp_t3_single:
         print(f"  FAIL [T3-single] Expected 0 findings for single weak signal, got: {t3_single_findings}")
     test("T3 false-positive guard suppresses defect finding when only one weak signal is present", t3_single_ok)
 
+# --- T3: Unambiguous Brand Guard ---
+print("\n[T3-unambiguous-brand] Distinctive brand lacking sameAs and category produces 0 defect findings")
+with tempfile.TemporaryDirectory() as tmp_t3_unambig:
+    tmp_t3_path = Path(tmp_t3_unambig)
+    p_home = tmp_t3_path / "pages" / "home"
+    p_home.mkdir(parents=True)
+
+    # Distinctive legal entity ("Acme Corp"), lacks sameAs and category keywords
+    unambig_html = (
+        "<!DOCTYPE html><html><head><title>Acme Corp</title></head><body>"
+        "<main><h1>Welcome to Acme Corp</h1>"
+        "<p>Empowering forward-thinking visionaries with unprecedented capability across all paradigms.</p>"
+        "</main></body></html>"
+    )
+    (p_home / "raw.html").write_text(unambig_html, encoding="utf-8")
+    (p_home / "text.txt").write_text("Welcome to Acme Corp Empowering forward-thinking visionaries with unprecedented capability across all paradigms.", encoding="utf-8")
+    (p_home / "meta.json").write_text(json.dumps({"url": "https://acmecorp.example.com/", "status_code": 200, "title": "Acme Corp"}), encoding="utf-8")
+
+    m_dict = {
+        "schema_version": "1.0",
+        "domain": "acmecorp.example.com",
+        "base_url": "https://acmecorp.example.com",
+        "crawled_pages": [{"url": "https://acmecorp.example.com/", "slug": "home", "status_code": 200}],
+    }
+    (tmp_t3_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    t3_unambig_findings = run_t3(tmp_t3_path)
+    t3_unambig_ok = len(t3_unambig_findings) == 0
+    if not t3_unambig_ok:
+        print(f"  FAIL [T3-unambiguous-brand] Expected 0 defect findings for distinctive brand, got: {t3_unambig_findings}")
+    test("T3 suppresses defect finding when brand is unambiguous, even if sameAs and category are absent", t3_unambig_ok)
+
 # --- T4: Missing About/Contact Presence ---
 print("\n[T4-presence] Absence of contact and about presence")
 with tempfile.TemporaryDirectory() as tmp_t4:
@@ -854,6 +992,42 @@ with tempfile.TemporaryDirectory() as tmp_t4:
     if not t4_ok:
         print(f"  FAIL [T4] Expected missing_contact_presence and missing_about_presence, got: {t4_findings}")
     test("T4 detects missing contact and about presence mechanisms", t4_ok)
+
+# --- T4: Editorial Authorship Attribution Ratio on News Archetype ---
+print("\n[T4-authorship-ratio] News site with 4 of 5 articles unattributed triggers T4 finding")
+with tempfile.TemporaryDirectory() as tmp_t4_auth:
+    tmp_t4_path = Path(tmp_t4_auth)
+    pages_dir = tmp_t4_path / "pages"
+    pages_dir.mkdir(parents=True)
+
+    # 1 attributed article, 4 unattributed articles
+    crawled = []
+    for idx in range(1, 6):
+        slug = f"post-{idx}"
+        p_dir = pages_dir / slug
+        p_dir.mkdir(parents=True)
+        byline = "<p class='byline'>By Jane Doe</p>" if idx == 1 else ""
+        text_byline = "By Jane Doe" if idx == 1 else ""
+        html = f"<html><body><article><h1>News Article {idx}</h1>{byline}<p>Reporting on economic developments.</p></article></body></html>"
+        (p_dir / "raw.html").write_text(html, encoding="utf-8")
+        (p_dir / "text.txt").write_text(f"News Article {idx} {text_byline} Reporting on economic developments.", encoding="utf-8")
+        (p_dir / "meta.json").write_text(json.dumps({"url": f"https://news.example.com/news/{slug}", "status_code": 200}), encoding="utf-8")
+        crawled.append({"url": f"https://news.example.com/news/{slug}", "slug": slug, "status_code": 200})
+
+    m_dict = {
+        "schema_version": "1.0",
+        "domain": "news.example.com",
+        "base_url": "https://news.example.com",
+        "archetypes": ["news"],
+        "crawled_pages": crawled,
+    }
+    (tmp_t4_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    t4_auth_findings = run_t4(tmp_t4_path)
+    t4_auth_ok = any(f["evidence"].get("type") == "missing_authorship_attribution" and f["evidence"].get("unattributed_ratio") == 0.8 for f in t4_auth_findings)
+    if not t4_auth_ok:
+        print(f"  FAIL [T4-authorship-ratio] Expected missing_authorship_attribution with 0.8 ratio, got: {t4_auth_findings}")
+    test("T4 flags systemic anonymous publishing when >= 50% of articles on news archetype lack attribution", t4_auth_ok)
 
 
 # --- CLEAN: All checks must produce 0 findings ---

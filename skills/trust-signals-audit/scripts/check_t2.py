@@ -2,19 +2,22 @@
 """
 check_t2.py — T2 Internal Inconsistency Check (Tier 1: Trust Signals Audit).
 
-Audits the corpus for contradictory repeated fact instances across pages:
-- Contact telephone numbers
-- Physical street addresses
-- Primary brand-name spellings
-- Key claimed numbers/metrics
+Audits the corpus for contradictory repeated fact instances across distinct pages:
+- Contact telephone numbers (with role/department context guard and punctuation normalization)
+- Physical street addresses (with street abbreviation normalization)
+- Key claimed proof metrics (with scale-gap guard)
 
 Negative-Logic Rules:
 - Formats MUST be normalized before comparison:
   Phone punctuation differences (e.g. '(555) 123-4567' vs '555.123.4567' vs '+1-555-123-4567')
   normalize to identical digit sequences ('5551234567') and MUST NEVER trigger a conflict.
 - Address abbreviations ('Street' vs 'St.', 'Suite' vs 'Ste.') normalize before comparison.
-- Multiple phone numbers on the same page (e.g. Sales vs Support) do not conflict if labeled differently.
-- Only conflicting facts between different pages representing the same entity attribute trigger findings.
+- Role/Context Guard: Distinct numbers serving different labeled roles/departments
+  (e.g. Sales vs Support vs Press) do NOT conflict with each other.
+  Only differing numbers serving the SAME role (or general unsegmented contact) across distinct pages conflict.
+- Substring Address Guard: Addresses where one page adds an explicit suite/unit number to the same street
+  do not conflict.
+- Scale Guard for Metrics: Proof metrics must diverge by >= 2.0x across distinct URLs to trigger a conflict.
 
 Usage:
     python check_t2.py <corpus_dir> [--manifest <crawl_manifest.json>]
@@ -35,9 +38,9 @@ PHONE_RE = re.compile(
     r"(?:\+?1[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})\b"
 )
 
-# Address regex (street number + street name + type)
+# Address regex (street number + street name + type, optional unit/suite, optional city/state/zip)
 STREET_RE = re.compile(
-    r"\b\d{1,5}\s+[A-Z][a-zA-Z0-9\s.,]+(?:Street|St|Avenue|Ave|Boulevard|Blvd|Road|Rd|Drive|Dr|Lane|Ln|Way|Suite|Ste)\b\.?",
+    r"\b\d{1,5}\s+[A-Za-z0-9\.\s]{1,30}?\b(?:Street|St|Avenue|Ave|Boulevard|Blvd|Road|Rd|Drive|Dr|Lane|Ln|Way|Parkway|Pkwy|Court|Ct|Circle|Cir)\b\.?(?:[,\s]+(?:Suite|Ste|Unit|Apt|Apartment|Floor|Fl|#)\s*[A-Za-z0-9\-]+)?(?:[,\s]+[A-Za-z\s]{2,25}(?:,\s*[A-Z]{2}(?:\s+\d{5})?\b|\s+\d{5}\b)?)?",
     re.IGNORECASE,
 )
 
@@ -56,8 +59,31 @@ def _normalize_phone(raw: str) -> str:
     return digits
 
 
+def _extract_phone_role(text: str, start: int, end: int) -> str:
+    """Extract department or functional context in the immediate vicinity of a phone number."""
+    pre_text = text[max(0, start - 35):start]
+    if "\n" in pre_text:
+        pre_text = pre_text.split("\n")[-1]
+    post_text = text[end:min(len(text), end + 25)]
+    if "\n" in post_text:
+        post_text = post_text.split("\n")[0]
+    vicinity = f"{pre_text} {post_text}".lower()
+
+    if re.search(r"\b(?:sales|billing|orders?)\b", vicinity):
+        return "sales"
+    if re.search(r"\b(?:support|help|tech(?:nical)?|service|desk)\b", vicinity):
+        return "support"
+    if re.search(r"\b(?:press|media|pr)\b", vicinity):
+        return "press"
+    if re.search(r"\b(?:fax)\b", vicinity):
+        return "fax"
+    if re.search(r"\b(?:headquarters|hq|corporate|main\s+office)\b", vicinity):
+        return "headquarters"
+    return "general"
+
+
 def _normalize_address(raw: str) -> str:
-    """Normalize common street address abbreviations and casing."""
+    """Normalize common street address abbreviations, punctuation, and casing."""
     s = raw.lower().strip()
     s = re.sub(r"\bstr(?:eet)?\.?\b", "st", s)
     s = re.sub(r"\bave(?:nue)?\.?\b", "ave", s)
@@ -70,17 +96,27 @@ def _normalize_address(raw: str) -> str:
     return s
 
 
+def _base_address(norm_addr: str) -> str:
+    """Strip unit/suite/floor/building designations to obtain primary street address."""
+    s = re.sub(r"\b(?:ste|suite|unit|apt|apartment|fl|floor|bldg|building|#)\s*[a-z0-9\-]+\b", "", norm_addr)
+    return re.sub(r"\s+", " ", s).strip()
+
+
 def run_check_t2(
     corpus_dir: Path,
     manifest: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
-    """Execute T2 check across all crawled pages."""
+    """Execute T2 cross-page inconsistency checks across the corpus."""
     findings: List[Dict[str, Any]] = []
 
-    # Map normalized_fact -> list of (url, raw_val)
-    phones_by_url: Dict[str, Set[Tuple[str, str]]] = {}  # url -> {(normalized, raw)}
-    addresses_by_url: Dict[str, Set[Tuple[str, str]]] = {}  # url -> {(normalized, raw)}
-    metrics_by_url: Dict[str, Set[Tuple[int, str]]] = {}  # url -> {(count, raw)}
+    # Map role -> normalized_phone -> list of (url, raw_phone)
+    phones_by_role: Dict[str, Dict[str, List[Tuple[str, str]]]] = {}
+
+    # Map normalized_address -> list of (url, raw_address)
+    addresses_by_norm: Dict[str, List[Tuple[str, str]]] = {}
+
+    # Map url -> set of (metric_val, raw_metric)
+    metrics_by_url: Dict[str, Set[Tuple[int, str]]] = {}
 
     for page_dir in sorted(corpus_dir.iterdir()):
         if not page_dir.is_dir():
@@ -117,22 +153,23 @@ def run_check_t2(
         if not text:
             continue
 
-        # Extract phones
+        # 1. Extract phone instances with role context
         for m in PHONE_RE.finditer(text):
             raw_phone = m.group(0)
             norm = _normalize_phone(raw_phone)
-            # Filter dummy placeholder sequences (e.g. 555-0100 through 555-0199 or 123-456-7890)
+            # Filter dummy placeholder sequences
             if len(norm) == 10 and not norm.startswith("000") and norm != "1234567890":
-                phones_by_url.setdefault(url, set()).add((norm, raw_phone))
+                role = _extract_phone_role(text, m.start(), m.end())
+                phones_by_role.setdefault(role, {}).setdefault(norm, []).append((url, raw_phone))
 
-        # Extract addresses
+        # 2. Extract address instances
         for m in STREET_RE.finditer(text):
-            raw_addr = m.group(0)
+            raw_addr = m.group(0).strip()
             norm_addr = _normalize_address(raw_addr)
             if len(norm_addr) > 8:
-                addresses_by_url.setdefault(url, set()).add((norm_addr, raw_addr))
+                addresses_by_norm.setdefault(norm_addr, []).append((url, raw_addr))
 
-        # Extract metrics
+        # 3. Extract metrics
         for m in METRIC_RE.finditer(text):
             raw_metric = m.group(0)
             cnt_str = m.group(1).replace(",", "")
@@ -141,67 +178,110 @@ def run_check_t2(
 
     finding_idx = 1
 
-    # 1. Diff Phone Numbers across pages
-    # Filter out secondary numbers by checking primary contact pages (e.g. footer/contact/about)
-    all_norm_phones: Dict[str, List[Tuple[str, str]]] = {}  # norm -> [(url, raw)]
-    for u, p_set in phones_by_url.items():
-        for norm, raw in p_set:
-            all_norm_phones.setdefault(norm, []).append((u, raw))
+    # --- Check 1: Inconsistent Phone Numbers across pages (under same role/department) ---
+    for role, phones_map in sorted(phones_by_role.items()):
+        if len(phones_map) > 1:
+            norm_keys = sorted(phones_map.keys())
+            # Find pairwise conflicts between distinct URLs
+            for i in range(len(norm_keys)):
+                for j in range(i + 1, len(norm_keys)):
+                    norm_a = norm_keys[i]
+                    norm_b = norm_keys[j]
+                    inst_a = phones_map[norm_a]
+                    inst_b = phones_map[norm_b]
 
-    if len(all_norm_phones) > 1:
-        # Check if conflicting numbers appear across different distinct pages
-        # If there are exactly 2 different numbers, verify they appear on core pages
-        norms = sorted(all_norm_phones.keys())
-        # Pairwise conflict detection
-        primary_norm = norms[0]
-        competing_norm = norms[1]
-        instances_a = all_norm_phones[primary_norm]
-        instances_b = all_norm_phones[competing_norm]
+                    # Verify they occur on distinct URLs
+                    url_a, raw_a = inst_a[0]
+                    url_b, raw_b = inst_b[0]
 
-        # Conflict confirmed when different pages assert different phone numbers
-        url_a = instances_a[0][0]
-        raw_a = instances_a[0][1]
-        url_b = instances_b[0][0]
-        raw_b = instances_b[0][1]
+                    if url_a != url_b:
+                        role_label = f" ({role} department)" if role != "general" else ""
+                        findings.append({
+                            "id": f"F-T2-{finding_idx:03d}",
+                            "check_id": "T2",
+                            "page_url": url_a,
+                            "root_cause": "corroboration_deficit",
+                            "evidence": {
+                                "fact_type": "telephone_number",
+                                "role": role,
+                                "normalized_value_a": norm_a,
+                                "raw_value_a": raw_a,
+                                "url_a": url_a,
+                                "normalized_value_b": norm_b,
+                                "raw_value_b": raw_b,
+                                "url_b": url_b,
+                            },
+                            "raw_severity_class": "medium",
+                            "confidence": 0.90,
+                            "mechanism": (
+                                f"Contradictory phone numbers{role_label} detected across pages: '{raw_a}' on {url_a} vs "
+                                f"'{raw_b}' on {url_b}. AI assistants synthesizing contact details will encounter "
+                                "conflicting corroboration and may refuse to state contact numbers or hallucinate "
+                                "between contradictory numbers."
+                            ),
+                            "false_positive_guard": (
+                                "Role and normalization guard: stripped all whitespace, country-code prefixes (+1), "
+                                "parentheses, and punctuation before comparison. Verified numbers belong to the same "
+                                f"role ('{role}'); distinct departments (e.g. Sales vs Support) do not conflict."
+                            ),
+                            "verification_method": f"curl -sL {url_a} | grep -E '{raw_a}' && curl -sL {url_b} | grep -E '{raw_b}'",
+                        })
+                        finding_idx += 1
+                        break  # Report one clear conflict per role
+                if len(findings) > 0 and findings[-1]["check_id"] == "T2" and findings[-1]["evidence"].get("role") == role:
+                    break
 
-        if url_a != url_b:
-            findings.append({
-                "id": f"F-T2-{finding_idx:03d}",
-                "check_id": "T2",
-                "page_url": url_a,
-                "root_cause": "corroboration_deficit",
-                "evidence": {
-                    "fact_type": "telephone_number",
-                    "normalized_value_a": primary_norm,
-                    "raw_value_a": raw_a,
-                    "url_a": url_a,
-                    "normalized_value_b": competing_norm,
-                    "raw_value_b": raw_b,
-                    "url_b": url_b,
-                    "all_conflicting_numbers": [
-                        {"url": u, "raw": r, "normalized": n}
-                        for n in (primary_norm, competing_norm)
-                        for u, r in all_norm_phones[n][:3]
-                    ],
-                },
-                "raw_severity_class": "medium",
-                "confidence": 0.88,
-                "mechanism": (
-                    f"Contradictory phone numbers detected across pages: '{raw_a}' on {url_a} vs "
-                    f"'{raw_b}' on {url_b}. AI assistants synthesizing contact details will encounter "
-                    "conflicting corroboration and may refuse to provide a telephone contact or hallucinate "
-                    "between contradictory numbers."
-                ),
-                "false_positive_guard": (
-                    "Phone normalization guard: stripped all whitespace, country-code prefixes (+1), "
-                    "parentheses, and punctuation before comparison. Formats like '(555) 123-4567' and "
-                    "'555.123.4567' normalize to identical digits ('5551234567') and are treated as identical."
-                ),
-                "verification_method": f"curl -sL {url_a} | grep -E '{raw_a}' && curl -sL {url_b} | grep -E '{raw_b}'",
-            })
-            finding_idx += 1
+    # --- Check 2: Inconsistent Physical Addresses across pages ---
+    if len(addresses_by_norm) > 1:
+        addr_norms = sorted(addresses_by_norm.keys())
+        for i in range(len(addr_norms)):
+            for j in range(i + 1, len(addr_norms)):
+                norm_a = addr_norms[i]
+                norm_b = addr_norms[j]
 
-    # 2. Diff Key Metrics across pages
+                # Substring/Unit extension guard: if one adds suite/unit or is a substring, do not conflict
+                if norm_a in norm_b or norm_b in norm_a or _base_address(norm_a) == _base_address(norm_b):
+                    continue
+
+                inst_a = addresses_by_norm[norm_a]
+                inst_b = addresses_by_norm[norm_b]
+                url_a, raw_a = inst_a[0]
+                url_b, raw_b = inst_b[0]
+
+                if url_a != url_b:
+                    findings.append({
+                        "id": f"F-T2-{finding_idx:03d}",
+                        "check_id": "T2",
+                        "page_url": url_a,
+                        "root_cause": "corroboration_deficit",
+                        "evidence": {
+                            "fact_type": "physical_address",
+                            "normalized_value_a": norm_a,
+                            "raw_value_a": raw_a,
+                            "url_a": url_a,
+                            "normalized_value_b": norm_b,
+                            "raw_value_b": raw_b,
+                            "url_b": url_b,
+                        },
+                        "raw_severity_class": "medium",
+                        "confidence": 0.88,
+                        "mechanism": (
+                            f"Contradictory physical street addresses asserted across pages: '{raw_a}' on {url_a} vs "
+                            f"'{raw_b}' on {url_b}. Autonomous assistants cross-referencing company credentials require "
+                            "a single unambiguous physical location for local grounding and corporate verification."
+                        ),
+                        "false_positive_guard": (
+                            "Address normalization guard: normalized street abbreviations (Street/St, Avenue/Ave, Suite/Ste), "
+                            "whitespace, and casing. Evaluated across distinct page URLs; substring/unit extensions excluded."
+                        ),
+                        "verification_method": f"curl -sL {url_a} | grep -iE '{raw_a[:20]}' && curl -sL {url_b} | grep -iE '{raw_b[:20]}'",
+                    })
+                    finding_idx += 1
+                    break
+            if len(findings) > 0 and findings[-1]["evidence"].get("fact_type") == "physical_address":
+                break
+
+    # --- Check 3: Inconsistent Claimed Metrics across pages ---
     all_metrics: Dict[int, List[Tuple[str, str]]] = {}
     for u, m_set in metrics_by_url.items():
         for cnt, raw in m_set:
@@ -210,7 +290,7 @@ def run_check_t2(
     if len(all_metrics) > 1:
         metric_vals = sorted(all_metrics.keys())
         min_v, max_v = metric_vals[0], metric_vals[-1]
-        # Only flag when discrepancy is significant (e.g. >= 2x difference)
+        # Only flag when discrepancy is significant (>= 2x difference)
         if max_v >= 2 * min_v:
             inst_min = all_metrics[min_v][0]
             inst_max = all_metrics[max_v][0]
