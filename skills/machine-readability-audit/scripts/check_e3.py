@@ -20,11 +20,25 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 _HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(_HERE))
 import archetype  # noqa: E402
+
+
+# ── Tiny-Site Suppressed Topics ───────────────────────────────────────────
+# Multi-page retail policy topics that are not actionable evidence gaps when
+# the acquisition manifest confirms a genuinely tiny site (< 8 pages).
+TINY_SITE_SUPPRESSED_TOPICS: Set[str] = {
+    "return_refund",
+    "accepted_payments",
+    "payment_methods",
+    "shipping_policy",
+    "catalog_offerings",
+    "customer_support",
+    "warranty_guarantee",
+}
 
 
 # ── Canonical Questions by Archetype ──────────────────────────────────────
@@ -446,7 +460,7 @@ def _evaluate_question_quotability(
 
 def run_check_e3(
     corpus_dir: Path,
-    manifest: Optional[Dict[str, Any]] = None,
+    manifest: Optional[Union[Path, str, Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     """
     Run E3 quotability gap check.
@@ -463,22 +477,51 @@ def run_check_e3(
             manifest_path = potential
 
     primary_archetype = "saas"  # sensible default
+    is_tiny_site = False
+
+    manifest_data: Dict[str, Any] = {}
+    if isinstance(manifest, (str, Path)):
+        mpath = Path(manifest)
+        if mpath.exists():
+            manifest_path = mpath
+            try:
+                manifest_data = json.loads(mpath.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+    elif isinstance(manifest, dict):
+        manifest_data = manifest
+
+    if not manifest_data and manifest_path.exists():
+        try:
+            manifest_data = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    if manifest_data:
+        is_tiny_site = bool(manifest_data.get("is_tiny_site", False))
+        crawled_list = manifest_data.get("crawled_pages", [])
+        if crawled_list and len(crawled_list) < 8:
+            is_tiny_site = True
+
     if manifest_path.exists():
         try:
             res = archetype.classify(manifest_path, corpus_dir)
             archs = res.get("archetypes", [])
             if archs and archs[0] != "unknown":
                 primary_archetype = archs[0]
+            if "is_tiny_site" in res:
+                is_tiny_site = is_tiny_site or bool(res["is_tiny_site"])
         except Exception:
             pass
-    elif manifest:
+    elif manifest_data:
         # Construct temporary check
         try:
-            sig = archetype.extract_signals(manifest, corpus_dir)
+            sig = archetype.extract_signals(manifest_data, corpus_dir)
             scores = archetype.score_archetypes(sig)
             archs, _ = archetype.select_archetypes(scores, sig)
             if archs and archs[0] != "unknown":
                 primary_archetype = archs[0]
+            is_tiny_site = is_tiny_site or bool(sig.get("total_crawled_pages", 0) < 8 or manifest_data.get("is_tiny_site", False))
         except Exception:
             pass
 
@@ -492,6 +535,13 @@ def run_check_e3(
 
     finding_idx = 1
     for q_spec in questions:
+        # Tiny-site guard:
+        # Multi-page policy questions are not actionable evidence gaps when the
+        # acquisition manifest confirms a genuinely tiny site. Do not infer that
+        # absence of these pages represents an E3 failure.
+        if is_tiny_site and q_spec.get("topic") in TINY_SITE_SUPPRESSED_TOPICS:
+            continue
+
         q_text = q_spec["question"]
         answered, best_passage, failure_reason = _evaluate_question_quotability(q_spec, passages)
 

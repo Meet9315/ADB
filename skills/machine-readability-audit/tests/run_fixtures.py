@@ -336,14 +336,68 @@ test("E3 fires on canonical question quotability gap with best passage and failu
 print("\n[clean] All checks against clean fixture — must produce 0 findings")
 fx = FIXTURES / "clean"
 all_clean_findings = []
-all_clean_findings.extend(run_reach(fx, ["R1", "R3", "R5"]))
+all_clean_findings.extend(run_reach(fx, ["R1", "R2", "R3", "R5"]))
 all_clean_findings.extend(run_noindex(fx))
 all_clean_findings.extend(run_d2(fx))
 all_clean_findings.extend(run_d1(fx))
 all_clean_findings.extend(run_e2(fx))
+all_clean_findings.extend(run_e3(fx))
 
 clean_ok = assert_zero("clean", all_clean_findings)
-test("CLEAN fixture produces 0 findings across deterministic checks", clean_ok)
+test("CLEAN fixture produces 0 findings across all 9 deterministic checks (R1, R2, R3, R4, R5, D1, D2, E2, E3)", clean_ok)
+
+# --- E3 Tiny-Site Regression Tests ---
+print("\n[e3-tiny-site-regression] Case A: Tiny clean ecommerce site (multi-page policy topics suppressed)")
+e3_clean_findings = run_e3(FIXTURES / "clean")
+case_a_ok = len(e3_clean_findings) == 0
+test("Case A: Tiny clean site with is_tiny_site=True produces 0 E3 findings", case_a_ok)
+
+print("\n[e3-tiny-site-regression] Case B: Tiny site with actual canonical answer evaluated")
+import tempfile
+with tempfile.TemporaryDirectory() as tmp_reg:
+    tmp_reg_path = Path(tmp_reg)
+    p_dir = tmp_reg_path / "pages" / "home"
+    p_dir.mkdir(parents=True)
+
+    # Tiny SaaS page that has a concrete product overview, but omits pricing
+    saas_html = (
+        "<!DOCTYPE html><html><head><title>Cloud Orchestrator</title></head><body>"
+        "<header><h1>Cloud Orchestrator Platform</h1></header>"
+        "<section>"
+        "<p>Cloud Orchestrator is an enterprise cloud management platform designed to automate "
+        "multi-cloud container deployments across AWS, Google Cloud, and Azure with unified policies. "
+        "Our software enables engineering teams to manage infrastructure as code with zero manual provisioning.</p>"
+        "</section>"
+        "<section class='pricing'>"
+        "<p>Contact our enterprise sales team for pricing information and custom quotes.</p>"
+        "</section>"
+        "</body></html>"
+    )
+    (p_dir / "raw.html").write_text(saas_html, encoding="utf-8")
+
+    m_dict = {
+        "schema_version": "1.0",
+        "domain": "orchestrator.example.com",
+        "base_url": "https://orchestrator.example.com",
+        "is_tiny_site": True,
+        "crawled_pages": [{"url": "https://orchestrator.example.com/", "slug": "home", "status_code": 200}],
+    }
+    (tmp_reg_path / "crawl_manifest.json").write_text(json.dumps(m_dict), encoding="utf-8")
+
+    res_b = subprocess.run(
+        [sys.executable, str(CHECK_E3), str(tmp_reg_path / "pages"), "--manifest", str(tmp_reg_path / "crawl_manifest.json")],
+        capture_output=True, text=True,
+    )
+    b_findings = json.loads(res_b.stdout) if res_b.stdout.strip() else []
+
+    answered_topics = [f["evidence"]["topic"] for f in b_findings]
+    overview_not_flagged = "product_overview" not in answered_topics
+    pricing_flagged = "pricing_tiers" in answered_topics
+
+    case_b_ok = overview_not_flagged and pricing_flagged
+    if not case_b_ok:
+        print(f"  FAIL Case B: overview_not_flagged={overview_not_flagged}, pricing_flagged={pricing_flagged}, flagged={answered_topics}")
+    test("Case B: Tiny site evaluates applicable questions (answered=no finding, absent=finding)", case_b_ok)
 
 # ---------------------------------------------------------------------------
 # Summary

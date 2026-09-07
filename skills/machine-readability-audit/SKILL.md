@@ -186,8 +186,8 @@ to canonical questions for the site's archetype.
 **DO NOT FIRE (Negative Logic — E3):**
 - **Self-contained answer present**: If at least one passage provides verifiable, concrete facts answering the question, do not flag.
 - **Never reconstruct from external knowledge**: Evaluation is strictly bounded to the script-extracted corpus.
-- **Tiny-site calibration**: For sites tagged `is_tiny_site`, missing secondary questions do not inflate severity;
-  orientation and primary purpose questions take precedence.
+- **Tiny-site negative logic**: When the acquisition manifest marks `is_tiny_site=true`, E3 must not treat absence of multi-page/site-wide policy topics such as shipping, returns, accepted payment methods, warranty, or catalog structure as a quotability gap solely because those pages are absent. These questions are suppressed unless the acquired corpus actually provides relevant evidence requiring evaluation. E3 must not be disabled wholesale for tiny sites.
+- **Tiny-site calibration**: For sites tagged `is_tiny_site`, orientation and primary purpose questions take precedence; non-suppressed questions are evaluated normally.
 
 ---
 
