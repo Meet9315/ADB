@@ -2,10 +2,18 @@
 corpus/
 scratch/
 
-# Python
+# Python & testing
 __pycache__/
 *.pyc
 *.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+.env
+.env.*
+venv/
+.venv/
+dist/
 
 # OS
 .DS_Store

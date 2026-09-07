@@ -6,7 +6,7 @@ description: >
   analysis skills. Use this skill at the start of any audit pipeline, before
   running any analysis. It is strictly read-only and respects robots.txt.
 license: MIT
-compatibility: Requires Python 3.10+, httpx[http2], selectolax. Optional: playwright.
+compatibility: "Requires Python 3.10+, httpx[http2], selectolax. Optional: playwright."
 metadata:
   tier: "0"
   role: data-acquisition
